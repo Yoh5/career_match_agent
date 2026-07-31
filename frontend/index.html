@@ -1,90 +1,276 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>Career Match Agent</title>
 <style>
-  :root{--ink:#1e2330;--muted:#667085;--line:#e6e9f0;--accent:#4f46e5;--soft:#eef0ff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--bg:#f5f6fa;}
+  /* ── Thème clair (défaut) ─────────────────────────────────── */
+  :root{
+    --ink:#141a2b; --ink-soft:#3a4256; --muted:#6b7690; --faint:#9aa3b8;
+    --line:#e6e9f2; --line-soft:#eef1f7;
+    --bg:#f4f5fb; --bg-grad-a:#eef1ff; --bg-grad-b:#f7f4ff;
+    --surface:#ffffff; --surface-2:#fafbff; --surface-3:#f5f7ff;
+    --accent:#5b57f0; --accent-ink:#4a46d6; --accent-soft:#ecebff;
+    --ok:#0f9d58; --ok-soft:#e7f7ee; --ok-line:#c7ecd6;
+    --warn:#d98218; --warn-soft:#fdf3e5;
+    --bad:#e0474c; --bad-soft:#fdeded; --bad-line:#f7d4d5;
+    --shadow:0 1px 2px rgba(20,30,60,.05), 0 8px 24px -12px rgba(20,30,60,.15);
+    --shadow-sm:0 1px 2px rgba(20,30,60,.06);
+    --ring:0 0 0 3px rgba(91,87,240,.16);
+  }
+  /* ── Thème sombre ─────────────────────────────────────────── */
+  :root[data-theme="dark"]{
+    --ink:#eef1f8; --ink-soft:#c4cbdd; --muted:#94a0bb; --faint:#6a768f;
+    --line:#2a3346; --line-soft:#232b3b;
+    --bg:#0c0f17; --bg-grad-a:#141a2e; --bg-grad-b:#171327;
+    --surface:#151a26; --surface-2:#111623; --surface-3:#1a2130;
+    --accent:#8b88ff; --accent-ink:#a5a2ff; --accent-soft:#211f3d;
+    --ok:#3fd085; --ok-soft:#122a20; --ok-line:#1e4736;
+    --warn:#f0a94a; --warn-soft:#2c2314;
+    --bad:#ff6b70; --bad-soft:#2e1719; --bad-line:#4a2427;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -14px rgba(0,0,0,.7);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.35);
+    --ring:0 0 0 3px rgba(139,136,255,.24);
+  }
+
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
-  .wrap{max-width:960px;margin:0 auto;padding:26px 18px 60px}
-  h1{font-size:24px;font-weight:800}h1 b{color:var(--accent)}
-  .sub{color:var(--muted);font-size:13px;margin-top:2px}
-  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px;box-shadow:0 1px 3px rgba(20,30,60,.04)}
-  label{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px}
-  textarea,input[type=text],select{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13px;color:var(--ink);outline:none;background:#fff}
-  textarea{min-height:120px;resize:vertical}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:"Inter",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); line-height:1.55; min-height:100vh;
+    background:
+      radial-gradient(1100px 520px at 12% -8%, var(--bg-grad-a), transparent 60%),
+      radial-gradient(900px 480px at 105% 0%, var(--bg-grad-b), transparent 55%),
+      var(--bg);
+    background-attachment:fixed;
+    transition:background-color .3s ease, color .3s ease;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 20px 72px}
+
+  /* ── En-tête ──────────────────────────────────────────────── */
+  header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{
+    width:44px;height:44px;border-radius:13px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    background:linear-gradient(135deg, var(--accent), #8b5cf6);
+    box-shadow:0 6px 18px -6px var(--accent);
+  }
+  h1{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+  h1 b{color:var(--accent-ink)}
+  .sub{color:var(--muted);font-size:13px;margin-top:3px;max-width:62ch}
+
+  /* Bascule thème */
+  .theme-toggle{
+    width:44px;height:44px;border-radius:12px;flex-shrink:0;cursor:pointer;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;font-size:18px;
+    box-shadow:var(--shadow-sm);transition:.18s;
+  }
+  .theme-toggle:hover{border-color:var(--accent);transform:translateY(-1px)}
+  .theme-toggle:active{transform:translateY(0)}
+  .theme-toggle .sun{display:none}
+  .theme-toggle .moon{display:block}
+  :root[data-theme="dark"] .theme-toggle .sun{display:block}
+  :root[data-theme="dark"] .theme-toggle .moon{display:none}
+
+  /* Fil des étapes */
+  .steps{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+  .step{
+    display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);
+    background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 13px;
+    box-shadow:var(--shadow-sm);transition:.2s;
+  }
+  .step .n{
+    width:19px;height:19px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;
+  }
+  .step.done{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
+  .step.done .n{background:var(--ok);color:#fff}
+
+  /* ── Cartes ───────────────────────────────────────────────── */
+  .card{
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    padding:20px 22px;margin-top:16px;box-shadow:var(--shadow);
+    transition:background-color .3s ease, border-color .3s ease;
+  }
+  .card-label{
+    display:flex;align-items:center;gap:9px;font-size:12px;font-weight:800;
+    letter-spacing:.02em;color:var(--ink);margin-bottom:14px;
+  }
+  .card-label .badge{
+    width:22px;height:22px;border-radius:7px;background:var(--accent-soft);color:var(--accent-ink);
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;
+  }
+  label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:7px}
+
+  textarea,input[type=text],select{
+    width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+    font:inherit;font-size:13.5px;color:var(--ink);outline:none;background:var(--surface-2);
+    transition:border-color .15s, box-shadow .15s, background-color .3s;
+  }
+  textarea:focus,input[type=text]:focus,select:focus{border-color:var(--accent);box-shadow:var(--ring)}
+  textarea::placeholder,input::placeholder{color:var(--faint)}
+  textarea{min-height:128px;resize:vertical}
+  select{cursor:pointer;-webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%236b7690' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}
   .row>div{flex:1;min-width:150px}
-  .file{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .btn{border:none;border-radius:9px;padding:10px 16px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;transition:.15s}
-  .btn-p{background:var(--accent);color:#fff}.btn-p:hover{background:#4338ca}
-  .btn-s{background:var(--soft);color:var(--accent)}.btn-s:hover{background:#e0e3ff}
-  .btn-g{background:#f1f3f8;color:var(--ink)}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-  .status{font-size:12px;color:var(--muted)}
+
+  /* Dropzone CV */
+  .drop{
+    border:1.5px dashed var(--line);border-radius:12px;padding:18px;background:var(--surface-2);
+    display:flex;align-items:center;gap:14px;flex-wrap:wrap;cursor:pointer;transition:.18s;
+  }
+  .drop:hover{border-color:var(--accent);background:var(--surface-3)}
+  .drop.loaded{border-style:solid;border-color:var(--ok-line);background:var(--ok-soft)}
+  .drop .ico{
+    width:40px;height:40px;border-radius:10px;background:var(--accent-soft);color:var(--accent-ink);
+    display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;
+  }
+  .drop.loaded .ico{background:var(--ok);color:#fff}
+  .drop .txt{flex:1;min-width:180px}
+  .drop .txt b{font-size:13.5px;font-weight:700}
+  .drop input[type=file]{display:none}
+
+  /* Boutons */
+  .btn{
+    border:1px solid transparent;border-radius:10px;padding:11px 17px;
+    font:inherit;font-weight:650;font-size:13.5px;cursor:pointer;transition:.16s;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn-p{background:var(--accent);color:#fff;box-shadow:0 6px 16px -8px var(--accent)}
+  .btn-p:hover{background:var(--accent-ink);transform:translateY(-1px)}
+  .btn-s{background:var(--accent-soft);color:var(--accent-ink);border-color:transparent}
+  .btn-s:hover{filter:brightness(.97);transform:translateY(-1px)}
+  .btn-g{background:var(--surface-3);color:var(--ink-soft);border-color:var(--line)}
+  .btn-g:hover{border-color:var(--accent);color:var(--accent-ink)}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
+  .btn:active{transform:translateY(0)}
+  .actions{display:flex;gap:11px;flex-wrap:wrap;margin-top:16px}
+
+  .status{font-size:12.5px;color:var(--muted)}
   .status.ok{color:var(--ok)}.status.err{color:var(--bad)}
   .hidden{display:none}
-  .score{display:flex;align-items:center;gap:16px}
-  .gauge{width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;flex-shrink:0}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-  .chip{background:#fff0f0;color:var(--bad);border:1px solid #fddede;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
-  .chip.ok{background:#eafaf0;color:var(--ok);border-color:#cdeed9}
-  h3{font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--accent);margin:14px 0 7px;border-bottom:1px solid var(--line);padding-bottom:4px}
-  ul{list-style:none}ul li{position:relative;padding-left:15px;margin-bottom:4px;font-size:13px}
-  ul li::before{content:"▹";position:absolute;left:0;color:var(--accent)}
+
+  /* Score */
+  .score{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  .gauge{
+    width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:26px;font-weight:800;color:#fff;flex-shrink:0;position:relative;
+    box-shadow:0 8px 22px -10px currentColor;
+  }
+  .score .meta{flex:1;min-width:200px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-line);border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:650}
+  .chip.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+
+  h3{
+    font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-ink);
+    margin:20px 0 9px;display:flex;align-items:center;gap:7px;
+  }
+  h3::after{content:"";flex:1;height:1px;background:var(--line)}
+  ul{list-style:none}
+  ul li{position:relative;padding-left:22px;margin-bottom:6px;font-size:13.5px;color:var(--ink-soft)}
+  ul li::before{content:"▹";position:absolute;left:2px;color:var(--accent);font-weight:700}
   ul.gap li::before{content:"△";color:var(--warn)}
   ul.sugg li::before{content:"✎";color:var(--accent)}
-  pre{white-space:pre-wrap;font-family:inherit;font-size:12.5px;background:#fafbff;border:1px solid var(--line);border-radius:9px;padding:14px;max-height:460px;overflow:auto}
-  .out-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
+  ul li.muted::before{content:""}
+
+  /* Sortie */
+  .out-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .out-head h3{margin:0;border:none}.out-head h3::after{display:none}
+  pre{
+    white-space:pre-wrap;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    font-size:12.5px;line-height:1.65;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:11px;padding:16px;max-height:480px;overflow:auto;color:var(--ink-soft);margin-top:4px;
+  }
+  .trace{
+    display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);
+    background:var(--accent-soft);border:1px solid transparent;border-radius:9px;
+    padding:8px 12px;margin:10px 0 2px;font-weight:600;
+  }
+  .trace b{color:var(--accent-ink)}
+  .muted{color:var(--muted);font-size:12.5px}
+
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite}
   @keyframes s{to{transform:rotate(360deg)}}
-  .muted{color:var(--muted);font-size:12px}
+
+  footer{text-align:center;color:var(--faint);font-size:12px;margin-top:34px}
+  footer a{color:var(--accent-ink);text-decoration:none}
+  footer a:hover{text-decoration:underline}
+
+  @media (max-width:560px){
+    .wrap{padding:18px 14px 56px}
+    h1{font-size:19px}.sub{font-size:12.5px}
+    .actions .btn{flex:1;justify-content:center}
+  }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>🎯 Career <b>Match</b> Agent</h1>
-  <div class="sub">Upload ton CV, colle une offre → score de fit ATS, projets à mettre en avant, suggestions d'amélioration, lettre de motivation &amp; CV adapté (FR/EN).</div>
+  <header class="top">
+    <div class="brand">
+      <div class="logo">🎯</div>
+      <div>
+        <h1>Career <b>Match</b> Agent</h1>
+        <div class="sub">Upload ton CV, colle une offre → score de fit ATS, projets à mettre en avant, suggestions, lettre &amp; CV adapté (FR/EN).</div>
+      </div>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="Basculer le thème" aria-label="Basculer le thème clair/sombre">
+      <span class="moon">🌙</span><span class="sun">☀️</span>
+    </button>
+  </header>
+
+  <div class="steps">
+    <div class="step" id="step1"><span class="n">1</span> CV</div>
+    <div class="step" id="step2"><span class="n">2</span> Offre</div>
+    <div class="step" id="step3"><span class="n">3</span> Analyse &amp; génération</div>
+  </div>
 
   <!-- 1. CV -->
   <div class="card">
-    <label>1 · Ton CV (base)</label>
-    <div class="file">
+    <div class="card-label"><span class="badge">1</span> Ton CV (base)</div>
+    <label class="drop" id="cvDrop" for="cvFile">
+      <div class="ico">📄</div>
+      <div class="txt">
+        <b>Choisir ton CV</b>
+        <div id="cvStatus" class="status">Formats : PDF, DOCX, TXT, MD — glisse-dépose ou clique.</div>
+      </div>
       <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md">
-      <span id="cvStatus" class="status">Aucun CV chargé — formats : PDF, DOCX, TXT, MD.</span>
-    </div>
+    </label>
   </div>
 
   <!-- 2. Offre + options -->
   <div class="card">
-    <label>2 · L'offre (stage / job)</label>
+    <div class="card-label"><span class="badge">2</span> L'offre (stage / job)</div>
     <textarea id="offerText" placeholder="Colle ici le texte de l'offre…"></textarea>
-    <div style="margin-top:10px"><label>…ou une URL d'offre (optionnel)</label>
+    <div style="margin-top:12px"><label>…ou une URL d'offre (optionnel)</label>
       <input type="text" id="offerUrl" placeholder="https://…"></div>
-    <div class="row" style="margin-top:12px">
+    <div class="row" style="margin-top:14px">
       <div><label>Langue des sorties</label>
         <select id="lang"><option value="fr">Français</option><option value="en">English</option></select></div>
       <div><label>Ton (lettre)</label>
         <select id="tone"><option>professionnel</option><option>enthousiaste</option><option>direct</option><option>formel</option></select></div>
     </div>
     <div class="actions">
-      <button class="btn btn-p" id="btnAnalyze">Analyser le fit</button>
-      <button class="btn btn-s" id="btnLetter">Lettre de motivation</button>
-      <button class="btn btn-s" id="btnCV">CV adapté</button>
+      <button class="btn btn-p" id="btnAnalyze">📊 Analyser le fit</button>
+      <button class="btn btn-s" id="btnLetter">✉️ Lettre de motivation</button>
+      <button class="btn btn-s" id="btnCV">📝 CV adapté</button>
     </div>
-    <div id="globalErr" class="status err" style="margin-top:10px"></div>
+    <div id="globalErr" class="status err" style="margin-top:12px"></div>
   </div>
 
   <!-- Résultats -->
   <div class="card hidden" id="analysisCard">
     <div class="score">
       <div class="gauge" id="gauge">–</div>
-      <div>
-        <div style="font-weight:700" id="verdict"></div>
-        <div class="muted" id="atsLine"></div>
+      <div class="meta">
+        <div style="font-weight:750;font-size:15px" id="verdict"></div>
+        <div class="muted" id="atsLine" style="margin-top:2px"></div>
         <div class="chips" id="kwMissing"></div>
       </div>
     </div>
@@ -95,12 +281,19 @@
   </div>
 
   <div class="card hidden" id="outCard">
-    <div class="out-head"><h3 id="outTitle" style="margin:0;border:none">Sortie</h3>
-      <div><button class="btn btn-g" id="btnCopy">Copier</button> <button class="btn btn-g" id="btnDownload">Télécharger</button></div>
+    <div class="out-head"><h3 id="outTitle">Sortie</h3>
+      <div style="display:flex;gap:9px">
+        <button class="btn btn-g" id="btnCopy">📋 Copier</button>
+        <button class="btn btn-g" id="btnDownload">⬇️ Télécharger</button>
+      </div>
     </div>
-    <div id="outMeta" class="muted" style="margin:6px 0 10px"></div>
+    <div id="outMeta" class="hidden"></div>
     <pre id="outText"></pre>
   </div>
+
+  <footer>
+    Built by <a href="https://github.com/Yoh5" target="_blank" rel="noopener">Axel AHO</a> · AI / Agent engineering
+  </footer>
 </div>
 
 <script>
@@ -108,6 +301,22 @@ const API = "";                        // même origine (servi par FastAPI)
 let cvText = "";
 const $ = id => document.getElementById(id);
 const setErr = m => $("globalErr").textContent = m || "";
+
+/* ── Thème (système + bascule persistée) ─────────────────────── */
+(function initTheme(){
+  const saved = localStorage.getItem("cma-theme");
+  const sysDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const theme = saved || (sysDark ? "dark" : "light");
+  document.documentElement.setAttribute("data-theme", theme);
+})();
+$("themeToggle").onclick = ()=>{
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("cma-theme", next);
+};
+
+function markStep(id, on){ $(id).classList.toggle("done", !!on); }
 
 async function post(path, body){
   const r = await fetch(API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
@@ -121,18 +330,25 @@ function busy(btn,on,label){ btn.disabled=on; btn.innerHTML = on ? '<span class=
 // CV upload
 $("cvFile").addEventListener("change", async e=>{
   const f = e.target.files[0]; if(!f) return;
+  $("cvDrop").classList.remove("loaded");
   $("cvStatus").className="status"; $("cvStatus").textContent="Lecture…";
   try{
     const fd = new FormData(); fd.append("file", f);
     const r = await fetch(API+"/extract-cv",{method:"POST",body:fd});
     const d = await r.json(); if(!r.ok) throw new Error(d.detail||"Erreur");
     cvText = d.cv_text;
+    $("cvDrop").classList.add("loaded");
     $("cvStatus").className="status ok"; $("cvStatus").textContent="✓ "+d.filename+" ("+d.chars+" caractères)";
-  }catch(err){ $("cvStatus").className="status err"; $("cvStatus").textContent="✗ "+err.message; }
+    markStep("step1", true);
+  }catch(err){ $("cvStatus").className="status err"; $("cvStatus").textContent="✗ "+err.message; markStep("step1", false); }
 });
 
+// Offre → étape 2
+$("offerText").addEventListener("input", ()=>markStep("step2", $("offerText").value.trim().length>0 || $("offerUrl").value.trim().length>0));
+$("offerUrl").addEventListener("input", ()=>markStep("step2", $("offerText").value.trim().length>0 || $("offerUrl").value.trim().length>0));
+
 // Analyse
-$("btnAnalyze").dataset.label = $("btnAnalyze").textContent;
+$("btnAnalyze").dataset.label = $("btnAnalyze").innerHTML;
 $("btnAnalyze").onclick = async ()=>{
   setErr(""); busy($("btnAnalyze"),true,"Analyse…");
   try{
@@ -145,6 +361,7 @@ $("btnAnalyze").onclick = async ()=>{
     $("kwMissing").innerHTML = (a.keywords_missing||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("");
     fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
     $("analysisCard").classList.remove("hidden");
+    markStep("step3", true);
     $("analysisCard").scrollIntoView({behavior:"smooth"});
   }catch(err){ setErr(err.message); }
   finally{ busy($("btnAnalyze"),false); }
@@ -159,21 +376,26 @@ function letterOrCV(path, title, filename, btn, label){
       $("outTitle").textContent = title; $("outText").textContent = text;
       if (d.ats_final !== undefined && d.ats_final !== null){
         const inv = (d.unsupported_final||[]).length;
-        $("outMeta").textContent = "🤖 Boucle agentique : couverture ATS "+d.ats_start+"% → "+d.ats_final+
-          "% en "+(d.iterations||[]).length+" itération(s) · "+(inv===0 ? "0 invention ✓" : inv+" à vérifier");
-      } else { $("outMeta").textContent = ""; }
+        $("outMeta").className = "trace";
+        $("outMeta").innerHTML = "🤖 <span>Boucle agentique :</span> couverture ATS <b>"+d.ats_start+"% → "+d.ats_final+
+          "%</b> en "+(d.iterations||[]).length+" itération(s) · "+(inv===0 ? "<b>0 invention ✓</b>" : inv+" à vérifier");
+      } else { $("outMeta").className = "hidden"; $("outMeta").innerHTML=""; }
       $("outCard").classList.remove("hidden"); $("btnDownload").dataset.file = filename;
+      markStep("step3", true);
       $("outCard").scrollIntoView({behavior:"smooth"});
     }catch(err){ setErr(err.message); }
     finally{ busy(btn,false); }
   };
 }
-$("btnLetter").dataset.label = $("btnLetter").textContent;
-$("btnCV").dataset.label = $("btnCV").textContent;
-$("btnLetter").onclick = letterOrCV("/cover-letter","Lettre de motivation","lettre_motivation.txt",$("btnLetter"),"Rédaction…");
-$("btnCV").onclick = letterOrCV("/tailored-cv","CV adapté (Markdown)","CV_adapte.md",$("btnCV"),"Génération…");
+$("btnLetter").dataset.label = $("btnLetter").innerHTML;
+$("btnCV").dataset.label = $("btnCV").innerHTML;
+$("btnLetter").onclick = letterOrCV("/cover-letter","✉️ Lettre de motivation","lettre_motivation.txt",$("btnLetter"),"Rédaction…");
+$("btnCV").onclick = letterOrCV("/tailored-cv","📝 CV adapté (Markdown)","CV_adapte.md",$("btnCV"),"Génération…");
 
-$("btnCopy").onclick = ()=>navigator.clipboard.writeText($("outText").textContent);
+$("btnCopy").onclick = ()=>{
+  navigator.clipboard.writeText($("outText").textContent);
+  const b=$("btnCopy"), t=b.innerHTML; b.innerHTML="✓ Copié"; setTimeout(()=>b.innerHTML=t,1400);
+};
 $("btnDownload").onclick = ()=>{
   const blob = new Blob([$("outText").textContent],{type:"text/plain;charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=$("btnDownload").dataset.file||"sortie.txt"; a.click();
