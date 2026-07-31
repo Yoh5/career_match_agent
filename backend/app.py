@@ -109,9 +109,17 @@ def do_cover_letter(body: OfferBody):
 
 @app.post("/tailored-cv")
 def do_tailored_cv(body: OfferBody):
+    """Boucle agentique : génère → mesure ATS → vérifie l'intégrité → révise,
+    en gardant la meilleure version. Renvoie le CV + la trace d'optimisation."""
     _guard_llm()
     cv, offer = _resolve(body)
-    md, err = agent.tailored_cv(cv, offer, body.lang)
+    result, err = agent.optimize_cv(cv, offer, body.lang)
     if err:
         raise HTTPException(502, f"Génération indisponible : {err}")
-    return {"tailored_cv_markdown": md}
+    return {
+        "tailored_cv_markdown": result["cv_markdown"],
+        "ats_start": result["ats_start"],
+        "ats_final": result["ats_final"],
+        "iterations": result["iterations"],
+        "unsupported_final": result["unsupported_final"],
+    }

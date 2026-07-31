@@ -10,7 +10,7 @@ Règle d'intégrité NON négociable, rappelée dans chaque prompt : **ne rien
 inventer** — on ne fait que réorganiser, reformuler et mettre en avant ce qui
 existe déjà dans le CV de base.
 """
-from core import llm
+from core import llm, ats
 
 _NO_FABRICATION = {
     "fr": "RÈGLE ABSOLUE : n'invente RIEN. N'ajoute aucune expérience, diplôme, "
@@ -142,3 +142,121 @@ def tailored_cv(cv_text: str, offer_text: str, lang: str = "fr") -> tuple:
     if err:
         return None, err
     return (raw or "").strip(), None
+
+
+# =============================================================================
+# BOUCLE AGENTIQUE — generate → measure (ATS) → verify (anti-invention) → revise
+# =============================================================================
+
+def verify_grounding(text: str, cv_text: str, lang: str = "fr") -> tuple:
+    """Vérificateur anti-invention (#3). Vérifie que chaque affirmation factuelle
+    de `text` est ADOSSÉE au CV de base. Retourne ({"unsupported": [...]}, err).
+    Fail-open : en cas d'erreur LLM, err est renvoyé et l'appelant n'échoue pas."""
+    lg = _lang(lang)
+    if lg == "en":
+        prompt = (
+            "You are a fact-checker. List the factual claims in DOCUMENT that are NOT "
+            "supported by the candidate's BASE CV (invented experience, skills, figures, "
+            "employers, dates). Ignore rephrasing/formatting. Return ONLY JSON: "
+            '{"unsupported": ["<claim>", ...]}. Empty list if everything is grounded.\n\n'
+            f"=== DOCUMENT ===\n{text[:6000]}\n\n=== BASE CV ===\n{cv_text[:6000]}"
+        )
+    else:
+        prompt = (
+            "Tu es fact-checker. Liste les affirmations factuelles du DOCUMENT qui NE sont "
+            "PAS adossées au CV de base du candidat (expérience, compétence, chiffre, "
+            "employeur ou date inventés). Ignore les reformulations/la mise en forme. Réponds "
+            'UNIQUEMENT en JSON : {"unsupported": ["<affirmation>", ...]}. Liste vide si tout '
+            "est fondé.\n\n"
+            f"=== DOCUMENT ===\n{text[:6000]}\n\n=== CV DE BASE ===\n{cv_text[:6000]}"
+        )
+    raw, err = llm.complete(prompt, json_mode=True, max_tokens=700)
+    if err:
+        return None, err
+    data = llm.parse_json(raw)
+    unsup = data.get("unsupported") if isinstance(data, dict) else None
+    return {"unsupported": [str(x).strip() for x in unsup if str(x).strip()] if isinstance(unsup, list) else []}, None
+
+
+def _revise_cv(current: str, cv_text: str, offer_text: str, missing_keywords: list,
+               unsupported: list, lang: str = "fr") -> tuple:
+    """Réécrit le CV adapté pour (a) intégrer les mots-clés manquants que le candidat
+    possède VRAIMENT, (b) retirer/corriger les affirmations non fondées."""
+    lg = _lang(lang)
+    miss = ", ".join(missing_keywords[:20]) or "—"
+    bad = "\n".join(f"- {u}" for u in unsupported[:15]) or "—"
+    if lg == "en":
+        prompt = (
+            "Improve this tailored CV. Two goals:\n"
+            f"1) ATS: surface these offer keywords IF and ONLY IF the candidate genuinely has "
+            f"them (per the base CV): {miss}\n"
+            f"2) Integrity: REMOVE or correct these unsupported claims:\n{bad}\n"
+            f"{_NO_FABRICATION['en']}\n{_ATS['en']}\n"
+            "Return the full improved CV in clean Markdown, nothing else.\n\n"
+            f"=== OFFER ===\n{offer_text[:4000]}\n\n=== BASE CV ===\n{cv_text[:5000]}\n\n"
+            f"=== CURRENT TAILORED CV ===\n{current[:5000]}"
+        )
+    else:
+        prompt = (
+            "Améliore ce CV adapté. Deux objectifs :\n"
+            f"1) ATS : fais ressortir ces mots-clés de l'offre SI ET SEULEMENT SI le candidat "
+            f"les possède vraiment (selon le CV de base) : {miss}\n"
+            f"2) Intégrité : RETIRE ou corrige ces affirmations non fondées :\n{bad}\n"
+            f"{_NO_FABRICATION['fr']}\n{_ATS['fr']}\n"
+            "Renvoie le CV amélioré complet en Markdown propre, rien d'autre.\n\n"
+            f"=== OFFRE ===\n{offer_text[:4000]}\n\n=== CV DE BASE ===\n{cv_text[:5000]}\n\n"
+            f"=== CV ADAPTÉ ACTUEL ===\n{current[:5000]}"
+        )
+    raw, err = llm.complete(prompt, json_mode=False, max_tokens=1800, temperature=0.3)
+    if err:
+        return None, err
+    return (raw or "").strip(), None
+
+
+def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
+                target: int = 80, max_iters: int = 2) -> tuple:
+    """Boucle agentique (#1+#3) : génère un CV adapté puis, tant que la couverture
+    ATS < `target` OU qu'il reste des affirmations non fondées, mesure → vérifie →
+    révise. Objectif chiffré déterministe (ats.coverage). Garde la MEILLEURE version
+    (0 invention prioritaire, puis meilleure couverture). Retourne (result, err) avec
+    result = {cv_markdown, ats_start, ats_final, iterations[], unsupported_final[]}."""
+    keywords = ats.extract_keywords(offer_text)
+    current, err = tailored_cv(cv_text, offer_text, lang)   # génération initiale
+    if err:
+        return None, err
+
+    iterations = []
+    best, best_key, ats_start = None, (-1, -1), None
+
+    for i in range(max(1, max_iters) + 1):
+        pct = ats.coverage(current, keywords)["pct"]
+        grounding, gerr = verify_grounding(current, cv_text, lang)   # #3 (fail-open)
+        unsupported = grounding["unsupported"] if grounding else []
+        if ats_start is None:
+            ats_start = pct
+        iterations.append({"iter": i, "ats": pct, "unsupported": len(unsupported)})
+
+        # Meilleure version : priorité à 0 invention, puis à la couverture ATS
+        key = (1 if not unsupported else 0, pct)
+        if key > best_key:
+            best, best_key = current, key
+
+        if pct >= target and not unsupported:      # objectif atteint
+            break
+        if i >= max_iters:                          # budget épuisé
+            break
+
+        missing = ats.coverage(current, keywords)["missing"]
+        revised, rerr = _revise_cv(current, cv_text, offer_text, missing, unsupported, lang)
+        if rerr or not revised:                     # révision indispo → on garde le meilleur
+            break
+        current = revised
+
+    final_unsup, _ = verify_grounding(best, cv_text, lang)
+    return {
+        "cv_markdown": best,
+        "ats_start": ats_start,
+        "ats_final": ats.coverage(best, keywords)["pct"],
+        "iterations": iterations,
+        "unsupported_final": (final_unsup or {}).get("unsupported", []),
+    }, None

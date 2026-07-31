@@ -75,3 +75,52 @@ def test_tailored_cv_ok(monkeypatch):
     monkeypatch.setattr(agent.llm, "complete", _ok("# Axel AHO\n## Profil\n..."))
     md, err = agent.tailored_cv(_CV, _OFFER, "en")
     assert err is None and md.startswith("# Axel AHO")
+
+
+# ── verify_grounding (#3) ──────────────────────────────────────
+
+def test_verify_grounding_lists_unsupported(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _ok(json.dumps({"unsupported": ["10 ans chez Google", "  "]})))
+    res, err = agent.verify_grounding("doc", _CV, "fr")
+    assert err is None and res["unsupported"] == ["10 ans chez Google"]
+
+
+def test_verify_grounding_error(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _fail("boom"))
+    res, err = agent.verify_grounding("doc", _CV, "fr")
+    assert res is None and err == "boom"
+
+
+# ── optimize_cv : boucle generate→measure→verify→revise (#1) ────
+
+_OPT_OFFER = "Stage : Python, FastAPI, Docker, LLM."   # keywords ATS = python, fastapi, docker, llm
+
+
+def test_optimize_cv_improves_ats(monkeypatch):
+    # gen initial = 2/4 mots-clés (50%), révision = 4/4 (100%), toujours fondé
+    monkeypatch.setattr(agent, "tailored_cv", lambda *a, **k: ("Compétences : Python, FastAPI.", None))
+    monkeypatch.setattr(agent, "verify_grounding", lambda *a, **k: ({"unsupported": []}, None))
+    monkeypatch.setattr(agent, "_revise_cv", lambda *a, **k: ("Compétences : Python, FastAPI, Docker, LLM.", None))
+    res, err = agent.optimize_cv(_CV, _OPT_OFFER, "fr", target=80, max_iters=2)
+    assert err is None
+    assert res["ats_start"] == 50 and res["ats_final"] == 100      # objectif dépassé
+    assert "Docker" in res["cv_markdown"]
+    assert len(res["iterations"]) >= 2
+
+
+def test_optimize_cv_prefers_grounded_version(monkeypatch):
+    # ATS déjà à 100% mais version initiale contient une invention ; la révision la nettoie
+    monkeypatch.setattr(agent, "tailored_cv", lambda *a, **k: ("Python FastAPI Docker LLM — Directeur chez Google.", None))
+    monkeypatch.setattr(agent, "verify_grounding",
+                        lambda text, *a, **k: ({"unsupported": [] if "cleaned" in text else ["Directeur chez Google"]}, None))
+    monkeypatch.setattr(agent, "_revise_cv", lambda *a, **k: ("Python FastAPI Docker LLM. cleaned", None))
+    res, err = agent.optimize_cv(_CV, _OPT_OFFER, "fr", target=80, max_iters=2)
+    assert err is None
+    assert res["unsupported_final"] == []            # version retenue = sans invention
+    assert "cleaned" in res["cv_markdown"]
+
+
+def test_optimize_cv_failopen_on_initial_error(monkeypatch):
+    monkeypatch.setattr(agent, "tailored_cv", lambda *a, **k: (None, "pas de clé"))
+    res, err = agent.optimize_cv(_CV, _OPT_OFFER, "fr")
+    assert res is None and err == "pas de clé"

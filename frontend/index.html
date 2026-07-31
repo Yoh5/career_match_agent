@@ -98,6 +98,7 @@
     <div class="out-head"><h3 id="outTitle" style="margin:0;border:none">Sortie</h3>
       <div><button class="btn btn-g" id="btnCopy">Copier</button> <button class="btn btn-g" id="btnDownload">Télécharger</button></div>
     </div>
+    <div id="outMeta" class="muted" style="margin:6px 0 10px"></div>
     <pre id="outText"></pre>
   </div>
 </div>
@@ -156,6 +157,11 @@ function letterOrCV(path, title, filename, btn, label){
       const d = await post(path, body());
       const text = d.cover_letter ?? d.tailored_cv_markdown ?? "";
       $("outTitle").textContent = title; $("outText").textContent = text;
+      if (d.ats_final !== undefined && d.ats_final !== null){
+        const inv = (d.unsupported_final||[]).length;
+        $("outMeta").textContent = "🤖 Boucle agentique : couverture ATS "+d.ats_start+"% → "+d.ats_final+
+          "% en "+(d.iterations||[]).length+" itération(s) · "+(inv===0 ? "0 invention ✓" : inv+" à vérifier");
+      } else { $("outMeta").textContent = ""; }
       $("outCard").classList.remove("hidden"); $("btnDownload").dataset.file = filename;
       $("outCard").scrollIntoView({behavior:"smooth"});
     }catch(err){ setErr(err.message); }

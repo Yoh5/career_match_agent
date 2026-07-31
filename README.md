@@ -6,7 +6,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, t
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI · pypdf / python-docx · vanilla-JS frontend · 12 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI · pypdf / python-docx · vanilla-JS frontend · 17 unit tests (no network, no API key)
 
 ---
 
@@ -21,6 +21,23 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, t
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
 | 🛡️ **ATS-optimised** | Plain, keyword-aligned, parsable output — to pass automated screening. |
+| 🔁 **Agentic optimisation loop** | The tailored CV isn't a one-shot: the agent **generates → measures ATS coverage (deterministic) → verifies integrity → revises**, keeping the best version. A real goal-directed loop with a measurable objective. |
+
+## 🔁 The agentic loop (tailored CV)
+
+`optimize_cv()` doesn't just generate — it *iterates toward a goal*:
+
+```
+generate tailored CV
+  └─► loop (bounded):
+        measure   ats.coverage(cv, offer_keywords)      ← deterministic objective (%)
+        verify    agent.verify_grounding(cv, base_cv)    ← anti-fabrication check
+        if ATS ≥ target AND no invented claims → stop
+        else revise (add real missing keywords, remove unsupported claims) → repeat
+  └─► return the BEST version (0 fabrication first, then highest ATS) + a trace
+```
+
+It keeps the candidate honest (unsupported claims are detected and removed) **and** pushes the ATS score up — a measurable generate→evaluate→reflect→revise loop, not a single prompt.
 
 ## 🏗️ How it works
 
@@ -30,10 +47,11 @@ Job offer (text/URL) ──► extract.fetch_url  plain text
         │
         ├─► ats.py         deterministic: offer keywords → coverage % vs CV   (tested, no LLM)
         └─► agent.py        LLM: fit score, strengths/gaps, projects, CV suggestions,
-                            tailored CV & cover letter  (bilingual, ATS, no-fabrication)
+                            cover letter, and an agentic optimise_cv() loop
+                            (generate → measure → verify_grounding → revise)
 ```
 
-The **ATS layer is deterministic and unit-tested**; the LLM layer adds the qualitative reasoning. Every LLM function returns `(result, err)` — the API surfaces a clear error instead of crashing.
+The **ATS layer is deterministic and unit-tested** — it doubles as the loop's objective function; the LLM layer adds the reasoning. Every LLM function returns `(result, err)` — the API surfaces a clear error instead of crashing.
 
 ## 🚀 Quickstart
 
@@ -48,7 +66,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 12 tests, no network / no API key
+python -m pytest tests/ -q                          # 17 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -58,7 +76,7 @@ python -m pytest tests/ -q                          # 12 tests, no network / no 
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
 | `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis}` |
 | `POST /cover-letter` | `{cv_text, offer_text, lang, tone}` | `{cover_letter}` |
-| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown}` |
+| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, ats_start, ats_final, iterations, unsupported_final}` |
 
 ## 🗂️ Layout
 
@@ -69,8 +87,9 @@ backend/
     llm.py          OpenAI client + tolerant JSON parse
     ats.py          deterministic keyword extraction + coverage (tested)
     extract.py      CV text (PDF/DOCX/TXT/MD) + offer URL → text
-    agent.py        analyze · cover_letter · tailored_cv (bilingual, ATS, no-fabrication)
-  tests/            12 unit tests
+    agent.py        analyze · cover_letter · tailored_cv · verify_grounding ·
+                    optimize_cv (agentic loop) — bilingual, ATS, no-fabrication
+  tests/            17 unit tests
 frontend/index.html  single-page UI
 ```
 
