@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Career Match Agent</title>
+<style>
+  :root{--ink:#1e2330;--muted:#667085;--line:#e6e9f0;--accent:#4f46e5;--soft:#eef0ff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--bg:#f5f6fa;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.5}
+  .wrap{max-width:960px;margin:0 auto;padding:26px 18px 60px}
+  h1{font-size:24px;font-weight:800}h1 b{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-top:16px;box-shadow:0 1px 3px rgba(20,30,60,.04)}
+  label{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:6px}
+  textarea,input[type=text],select{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font:inherit;font-size:13px;color:var(--ink);outline:none;background:#fff}
+  textarea{min-height:120px;resize:vertical}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+  .row>div{flex:1;min-width:150px}
+  .file{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .btn{border:none;border-radius:9px;padding:10px 16px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;transition:.15s}
+  .btn-p{background:var(--accent);color:#fff}.btn-p:hover{background:#4338ca}
+  .btn-s{background:var(--soft);color:var(--accent)}.btn-s:hover{background:#e0e3ff}
+  .btn-g{background:#f1f3f8;color:var(--ink)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .status{font-size:12px;color:var(--muted)}
+  .status.ok{color:var(--ok)}.status.err{color:var(--bad)}
+  .hidden{display:none}
+  .score{display:flex;align-items:center;gap:16px}
+  .gauge{width:78px;height:78px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;flex-shrink:0}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .chip{background:#fff0f0;color:var(--bad);border:1px solid #fddede;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600}
+  .chip.ok{background:#eafaf0;color:var(--ok);border-color:#cdeed9}
+  h3{font-size:12px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--accent);margin:14px 0 7px;border-bottom:1px solid var(--line);padding-bottom:4px}
+  ul{list-style:none}ul li{position:relative;padding-left:15px;margin-bottom:4px;font-size:13px}
+  ul li::before{content:"▹";position:absolute;left:0;color:var(--accent)}
+  ul.gap li::before{content:"△";color:var(--warn)}
+  ul.sugg li::before{content:"✎";color:var(--accent)}
+  pre{white-space:pre-wrap;font-family:inherit;font-size:12.5px;background:#fafbff;border:1px solid var(--line);border-radius:9px;padding:14px;max-height:460px;overflow:auto}
+  .out-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .muted{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎯 Career <b>Match</b> Agent</h1>
+  <div class="sub">Upload ton CV, colle une offre → score de fit ATS, projets à mettre en avant, suggestions d'amélioration, lettre de motivation &amp; CV adapté (FR/EN).</div>
+
+  <!-- 1. CV -->
+  <div class="card">
+    <label>1 · Ton CV (base)</label>
+    <div class="file">
+      <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md">
+      <span id="cvStatus" class="status">Aucun CV chargé — formats : PDF, DOCX, TXT, MD.</span>
+    </div>
+  </div>
+
+  <!-- 2. Offre + options -->
+  <div class="card">
+    <label>2 · L'offre (stage / job)</label>
+    <textarea id="offerText" placeholder="Colle ici le texte de l'offre…"></textarea>
+    <div style="margin-top:10px"><label>…ou une URL d'offre (optionnel)</label>
+      <input type="text" id="offerUrl" placeholder="https://…"></div>
+    <div class="row" style="margin-top:12px">
+      <div><label>Langue des sorties</label>
+        <select id="lang"><option value="fr">Français</option><option value="en">English</option></select></div>
+      <div><label>Ton (lettre)</label>
+        <select id="tone"><option>professionnel</option><option>enthousiaste</option><option>direct</option><option>formel</option></select></div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-p" id="btnAnalyze">Analyser le fit</button>
+      <button class="btn btn-s" id="btnLetter">Lettre de motivation</button>
+      <button class="btn btn-s" id="btnCV">CV adapté</button>
+    </div>
+    <div id="globalErr" class="status err" style="margin-top:10px"></div>
+  </div>
+
+  <!-- Résultats -->
+  <div class="card hidden" id="analysisCard">
+    <div class="score">
+      <div class="gauge" id="gauge">–</div>
+      <div>
+        <div style="font-weight:700" id="verdict"></div>
+        <div class="muted" id="atsLine"></div>
+        <div class="chips" id="kwMissing"></div>
+      </div>
+    </div>
+    <h3>✅ Points forts (vs l'offre)</h3><ul id="strengths"></ul>
+    <h3>△ Écarts à combler</h3><ul class="gap" id="gaps"></ul>
+    <h3>📌 Projets à mettre en avant</h3><ul id="projects"></ul>
+    <h3>✎ Suggestions pour améliorer ton CV (et le score)</h3><ul class="sugg" id="suggestions"></ul>
+  </div>
+
+  <div class="card hidden" id="outCard">
+    <div class="out-head"><h3 id="outTitle" style="margin:0;border:none">Sortie</h3>
+      <div><button class="btn btn-g" id="btnCopy">Copier</button> <button class="btn btn-g" id="btnDownload">Télécharger</button></div>
+    </div>
+    <pre id="outText"></pre>
+  </div>
+</div>
+
+<script>
+const API = "";                        // même origine (servi par FastAPI)
+let cvText = "";
+const $ = id => document.getElementById(id);
+const setErr = m => $("globalErr").textContent = m || "";
+
+async function post(path, body){
+  const r = await fetch(API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  const d = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.detail || ("Erreur "+r.status));
+  return d;
+}
+function body(){ return {cv_text:cvText, offer_text:$("offerText").value, offer_url:$("offerUrl").value, lang:$("lang").value, tone:$("tone").value}; }
+function busy(btn,on,label){ btn.disabled=on; btn.innerHTML = on ? '<span class="spin"></span> '+label : btn.dataset.label; }
+
+// CV upload
+$("cvFile").addEventListener("change", async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  $("cvStatus").className="status"; $("cvStatus").textContent="Lecture…";
+  try{
+    const fd = new FormData(); fd.append("file", f);
+    const r = await fetch(API+"/extract-cv",{method:"POST",body:fd});
+    const d = await r.json(); if(!r.ok) throw new Error(d.detail||"Erreur");
+    cvText = d.cv_text;
+    $("cvStatus").className="status ok"; $("cvStatus").textContent="✓ "+d.filename+" ("+d.chars+" caractères)";
+  }catch(err){ $("cvStatus").className="status err"; $("cvStatus").textContent="✗ "+err.message; }
+});
+
+// Analyse
+$("btnAnalyze").dataset.label = $("btnAnalyze").textContent;
+$("btnAnalyze").onclick = async ()=>{
+  setErr(""); busy($("btnAnalyze"),true,"Analyse…");
+  try{
+    const d = await post("/analyze", body());
+    const a = d.analysis, cov = d.ats;
+    const s = a.fit_score;
+    const g = $("gauge"); g.textContent = s; g.style.background = s>=70?"var(--ok)":s>=45?"var(--warn)":"var(--bad)";
+    $("verdict").textContent = a.verdict||"";
+    $("atsLine").textContent = "Couverture mots-clés ATS : "+cov.pct+"% ("+cov.matched.length+"/"+(cov.matched.length+cov.missing.length)+")";
+    $("kwMissing").innerHTML = (a.keywords_missing||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("");
+    fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
+    $("analysisCard").classList.remove("hidden");
+    $("analysisCard").scrollIntoView({behavior:"smooth"});
+  }catch(err){ setErr(err.message); }
+  finally{ busy($("btnAnalyze"),false); }
+};
+
+function letterOrCV(path, title, filename, btn, label){
+  return async ()=>{
+    setErr(""); busy(btn,true,label);
+    try{
+      const d = await post(path, body());
+      const text = d.cover_letter ?? d.tailored_cv_markdown ?? "";
+      $("outTitle").textContent = title; $("outText").textContent = text;
+      $("outCard").classList.remove("hidden"); $("btnDownload").dataset.file = filename;
+      $("outCard").scrollIntoView({behavior:"smooth"});
+    }catch(err){ setErr(err.message); }
+    finally{ busy(btn,false); }
+  };
+}
+$("btnLetter").dataset.label = $("btnLetter").textContent;
+$("btnCV").dataset.label = $("btnCV").textContent;
+$("btnLetter").onclick = letterOrCV("/cover-letter","Lettre de motivation","lettre_motivation.txt",$("btnLetter"),"Rédaction…");
+$("btnCV").onclick = letterOrCV("/tailored-cv","CV adapté (Markdown)","CV_adapte.md",$("btnCV"),"Génération…");
+
+$("btnCopy").onclick = ()=>navigator.clipboard.writeText($("outText").textContent);
+$("btnDownload").onclick = ()=>{
+  const blob = new Blob([$("outText").textContent],{type:"text/plain;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=$("btnDownload").dataset.file||"sortie.txt"; a.click();
+};
+
+function fill(id,arr){ $(id).innerHTML=(arr||[]).map(x=>"<li>"+esc(x)+"</li>").join("") || '<li class="muted">—</li>'; }
+function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+</script>
+</body>
+</html>
