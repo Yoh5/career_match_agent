@@ -1,12 +1,14 @@
-# 🎯 Career Match Agent — tailor your application to any job offer
+# 🎯 Career Match Agent — tailor your application to any job offer, any field
 
-Upload your CV, paste a job/internship offer → the agent **scores the fit**, tells you **which projects to highlight**, **suggests concrete CV improvements to raise the score**, and generates an **ATS-optimised, tailored CV** and **cover letter** — in **French or English**.
+Upload your CV, paste a job/internship offer → the agent **scores the fit**, gives a **go/no-go recommendation with a prioritised action plan**, tells you **which projects to highlight**, **suggests concrete CV improvements to raise the score**, and generates an **ATS-optimised, tailored CV** and **cover letter** — in **French or English**.
 
+> **Any field, not just tech.** ATS keywords are extracted *from the offer itself* by the LLM (marketing, finance, HR, healthcare, legal, sales, engineering…), so the signal is relevant whatever the role — a curated tech list only acts as a deterministic fallback.
+>
 > Built for a real need: apply *strategically* instead of sending the same CV everywhere. The agent reasons over the CV **and** the offer, and blends a **deterministic ATS keyword signal** with LLM analysis.
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI · pypdf / python-docx · vanilla-JS frontend · 17 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 30 unit tests (no network, no API key)
 
 ---
 
@@ -19,9 +21,12 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, t
 | ✎ **CV improvement suggestions** | Concrete, actionable edits (wording, missing keywords, ordering, quantification) to raise the score. |
 | 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (single column, standard sections, exact keywords you truly have). |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
+| 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
 | 🛡️ **ATS-optimised** | Plain, keyword-aligned, parsable output — to pass automated screening. |
 | 🔁 **Agentic optimisation loop** | The tailored CV isn't a one-shot: the agent **generates → measures ATS coverage (deterministic) → verifies integrity → revises**, keeping the best version. A real goal-directed loop with a measurable objective. |
+| 🤖 **Autonomous agent (tool-calling)** | `/prepare` runs a **ReAct loop**: the LLM *chooses* which tools to call (measure ATS, analyse, recall memory, recommend, write CV/letter) and in what order — every step is traced. |
+| 🧠 **Long-term memory** | Remembers offers already analysed and **recurring gaps** across offers ("you're often missing X") to sharpen future advice. |
 
 ## 🔁 The agentic loop (tailored CV)
 
@@ -38,6 +43,18 @@ generate tailored CV
 ```
 
 It keeps the candidate honest (unsupported claims are detected and removed) **and** pushes the ATS score up — a measurable generate→evaluate→reflect→revise loop, not a single prompt.
+
+## 🤖 Why it's a real agent (not a prompt wrapper)
+
+| Agent trait | Here |
+|---|---|
+| **Autonomous tool-use** | `/prepare` = a ReAct loop where the LLM *decides* which tools to call (fetch offer, measure ATS, analyse, recall memory, recommend, write CV/letter) — `core/orchestrator.py`. |
+| **Goal-directed loop** | `optimize_cv` iterates toward a measurable ATS target with an anti-fabrication gate. |
+| **Self-critique** | `verify_grounding` checks each claim against the base CV and drives revision. |
+| **Planning** | `recommend` turns the assessment into a go/no-go decision + ordered action plan. |
+| **Long-term memory** | `core/memory.py` remembers offers and surfaces recurring gaps across sessions. |
+
+Every step is **traced** and shown in the UI, and every LLM call is **fail-open** (a failure degrades gracefully instead of crashing).
 
 ## 🏗️ How it works
 
@@ -74,9 +91,11 @@ python -m pytest tests/ -q                          # 17 tests, no network / no 
 | Endpoint | Body | Returns |
 |---|---|---|
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
-| `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis}` |
+| `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis, recommendation, memory}` |
 | `POST /cover-letter` | `{cv_text, offer_text, lang, tone}` | `{cover_letter}` |
 | `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, ats_start, ats_final, iterations, unsupported_final}` |
+| `POST /prepare` | `{cv_text, offer_text\|offer_url, lang}` | `{steps[], analysis, ats, recommendation, cover_letter, tailored_cv, summary}` (autonomous agent) |
+| `GET /memory` | — | `{count, avg_fit, recurring_gaps[]}` |
 
 ## 🗂️ Layout
 
@@ -84,13 +103,15 @@ python -m pytest tests/ -q                          # 17 tests, no network / no 
 backend/
   app.py            FastAPI + serves the frontend
   core/
-    llm.py          OpenAI client + tolerant JSON parse
+    llm.py          OpenAI client (chat + tool-calling) + tolerant JSON parse
     ats.py          deterministic keyword extraction + coverage (tested)
     extract.py      CV text (PDF/DOCX/TXT/MD) + offer URL → text
-    agent.py        analyze · cover_letter · tailored_cv · verify_grounding ·
-                    optimize_cv (agentic loop) — bilingual, ATS, no-fabrication
-  tests/            17 unit tests
-frontend/index.html  single-page UI
+    agent.py        offer_keywords (any-field ATS) · analyze · recommend (go/no-go) ·
+                    cover_letter · tailored_cv · verify_grounding · optimize_cv (loop)
+    memory.py       long-term memory: offers seen + recurring gaps (fail-open)
+    orchestrator.py ReAct agent — LLM chooses tools until the application is ready
+  tests/            30 unit tests
+frontend/index.html  single-page UI (light/dark)
 ```
 
 ---

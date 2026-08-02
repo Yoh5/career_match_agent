@@ -42,8 +42,9 @@ def analyze(cv_text: str, offer_text: str, ats_cov: dict, lang: str = "fr") -> t
     pct = (ats_cov or {}).get("pct", 0)
     if lg == "en":
         prompt = (
-            "You are a technical recruiter + ATS expert. Compare this candidate's CV to "
-            "the job offer and return a rigorous assessment.\n\n"
+            "You are a senior recruiter SPECIALISED in this offer's field (whatever it is: "
+            "marketing, finance, HR, healthcare, legal, sales, engineering, tech…) + an ATS "
+            "expert. Compare this candidate's CV to the job offer and return a rigorous assessment.\n\n"
             f"Deterministic ATS keyword coverage already computed: {pct}% "
             f"(missing offer keywords: {missing}).\n\n"
             "Return ONLY JSON:\n"
@@ -58,8 +59,9 @@ def analyze(cv_text: str, offer_text: str, ats_cov: dict, lang: str = "fr") -> t
         )
     else:
         prompt = (
-            "Tu es recruteur technique + expert ATS. Compare le CV du candidat à l'offre "
-            "et renvoie une évaluation rigoureuse.\n\n"
+            "Tu es recruteur senior SPÉCIALISÉ dans le domaine de cette offre (quel qu'il soit : "
+            "marketing, finance, RH, santé, juridique, commerce, ingénierie, tech…) + expert ATS. "
+            "Compare le CV du candidat à l'offre et renvoie une évaluation rigoureuse.\n\n"
             f"Couverture de mots-clés ATS déjà calculée : {pct}% "
             f"(mots-clés de l'offre manquants : {missing}).\n\n"
             "Réponds UNIQUEMENT en JSON :\n"
@@ -122,19 +124,21 @@ def tailored_cv(cv_text: str, offer_text: str, lang: str = "fr") -> tuple:
     if lg == "en":
         prompt = (
             "Rewrite the candidate's CV, TAILORED to this job offer and ATS-optimised. "
-            "Output clean Markdown, single column, standard sections (Summary, Skills, "
-            "Experience, Projects, Education). Reorder and rephrase to surface what matches "
-            "the offer; weave in the offer's exact keywords the candidate genuinely has.\n"
+            "Output clean Markdown, single column, standard sections adapted to the FIELD "
+            "(Summary, Skills, Experience, Education; add Projects/Publications/Achievements/"
+            "Certifications only if relevant to the role). Reorder and rephrase to surface what "
+            "matches the offer; weave in the offer's exact keywords the candidate genuinely has.\n"
             f"{_NO_FABRICATION['en']}\n{_ATS['en']}\n\n"
             f"=== JOB OFFER ===\n{offer_text[:5000]}\n\n=== BASE CV ===\n{cv_text[:6000]}"
         )
     else:
         prompt = (
             "Réécris le CV du candidat, ADAPTÉ à cette offre et optimisé ATS. Sortie en "
-            "Markdown propre, une seule colonne, sections standard (Profil, Compétences, "
-            "Expériences, Projets, Formation). Réordonne et reformule pour faire ressortir "
-            "ce qui colle à l'offre ; intègre les mots-clés exacts de l'offre que le candidat "
-            "possède vraiment.\n"
+            "Markdown propre, une seule colonne, sections standard ADAPTÉES AU MÉTIER "
+            "(Profil, Compétences, Expériences, Formation ; ajoute Projets/Publications/"
+            "Réalisations/Certifications seulement si pertinent pour le poste). Réordonne et "
+            "reformule pour faire ressortir ce qui colle à l'offre ; intègre les mots-clés "
+            "exacts de l'offre que le candidat possède vraiment.\n"
             f"{_NO_FABRICATION['fr']}\n{_ATS['fr']}\n\n"
             f"=== OFFRE ===\n{offer_text[:5000]}\n\n=== CV DE BASE ===\n{cv_text[:6000]}"
         )
@@ -142,6 +146,88 @@ def tailored_cv(cv_text: str, offer_text: str, lang: str = "fr") -> tuple:
     if err:
         return None, err
     return (raw or "").strip(), None
+
+
+def offer_keywords(offer_text: str, lang: str = "fr") -> tuple:
+    """Extrait les mots-clés ATS de l'offre, TOUS DOMAINES (pas seulement tech) :
+    compétences, outils/logiciels, certifications, méthodes et termes métier EXACTS
+    tels qu'écrits dans l'offre. Rend le signal ATS pertinent quel que soit le poste
+    (marketing, finance, RH, santé, juridique, commerce…). Retourne (list, err) —
+    fail-open : en cas d'erreur, l'appelant retombe sur la liste tech curée."""
+    lg = _lang(lang)
+    if lg == "en":
+        prompt = (
+            "Extract the ATS keywords a screening system would match for THIS job offer, "
+            "whatever the field (marketing, finance, HR, healthcare, legal, sales, engineering, "
+            "tech…). Return the concrete hard skills, tools/software, certifications, methods and "
+            "exact domain terms AS WRITTEN in the offer — short noun phrases, no soft skills, no "
+            'verbs. Return ONLY JSON: {"keywords": ["<term>", ...]} (max 25).\n\n'
+            f"=== JOB OFFER ===\n{offer_text[:5000]}"
+        )
+    else:
+        prompt = (
+            "Extrais les mots-clés ATS qu'un logiciel de tri retiendrait pour CETTE offre, quel "
+            "que soit le domaine (marketing, finance, RH, santé, juridique, commerce, ingénierie, "
+            "tech…). Donne les compétences concrètes, outils/logiciels, certifications, méthodes et "
+            "termes métier EXACTS tels qu'écrits dans l'offre — groupes nominaux courts, pas de "
+            'soft skills, pas de verbes. Réponds UNIQUEMENT en JSON : {"keywords": ["<terme>", ...]} '
+            "(max 25).\n\n"
+            f"=== OFFRE ===\n{offer_text[:5000]}"
+        )
+    raw, err = llm.complete(prompt, json_mode=True, max_tokens=500)
+    if err:
+        return [], err
+    data = llm.parse_json(raw)
+    kws = data.get("keywords") if isinstance(data, dict) else None
+    return ([str(k).strip() for k in kws if str(k).strip()] if isinstance(kws, list) else []), None
+
+
+def recommend(analysis: dict, ats_cov: dict, lang: str = "fr", memory_note: str = "") -> tuple:
+    """Planification + décision go/no-go (#5). Combine le signal chiffré (fit_score,
+    couverture ATS, écarts) et un raisonnement LLM pour recommander : postuler /
+    renforcer d'abord / passer — avec un plan d'action ORDONNÉ et priorisé. Retourne
+    (dict, err) avec dict = {decision, confidence, rationale, action_plan[]}."""
+    lg = _lang(lang)
+    fit = int((analysis or {}).get("fit_score", 0) or 0)
+    pct = int((ats_cov or {}).get("pct", 0) or 0)
+    gaps = "; ".join((analysis or {}).get("gaps", [])[:8]) or "—"
+    missing = ", ".join((ats_cov or {}).get("missing", [])[:15]) or "—"
+    mem = f"\nMémoire (candidatures passées) : {memory_note}" if memory_note else ""
+    if lg == "en":
+        prompt = (
+            "You are a career coach. Decide whether the candidate should apply to this offer, "
+            f"using: fit score {fit}/100, ATS coverage {pct}%, gaps ({gaps}), missing keywords "
+            f"({missing}).{mem}\n"
+            "decision ∈ {apply | strengthen_first | skip}. Give an ORDERED, concrete, prioritised "
+            "action plan (what to do BEFORE applying to maximise the odds).\n"
+            'Return ONLY JSON: {"decision":"<...>","confidence":<0-100>,'
+            '"rationale":"<2 sentences>","action_plan":["<step 1>", ...]}'
+        )
+    else:
+        prompt = (
+            "Tu es coach carrière. Décide si le candidat doit postuler à cette offre, en "
+            f"t'appuyant sur : score de fit {fit}/100, couverture ATS {pct}%, écarts ({gaps}), "
+            f"mots-clés manquants ({missing}).{mem}\n"
+            "decision ∈ {postuler | renforcer_puis_postuler | passer}. Donne un plan d'action "
+            "ORDONNÉ, concret et priorisé (quoi faire AVANT de postuler pour maximiser les chances).\n"
+            'Réponds UNIQUEMENT en JSON : {"decision":"<...>","confidence":<0-100>,'
+            '"rationale":"<2 phrases>","action_plan":["<étape 1>", ...]}'
+        )
+    raw, err = llm.complete(prompt, json_mode=True, max_tokens=800)
+    if err:
+        return None, err
+    data = llm.parse_json(raw)
+    if not isinstance(data, dict):
+        return None, "Réponse LLM illisible"
+    data["decision"] = str(data.get("decision", "")).strip().lower()
+    try:
+        data["confidence"] = max(0, min(100, int(data.get("confidence", 0) or 0)))
+    except (TypeError, ValueError):
+        data["confidence"] = 0
+    data["rationale"] = str(data.get("rationale", "")).strip()
+    ap = data.get("action_plan")
+    data["action_plan"] = [str(x).strip() for x in ap if str(x).strip()] if isinstance(ap, list) else []
+    return data, None
 
 
 # =============================================================================
@@ -220,7 +306,8 @@ def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
     révise. Objectif chiffré déterministe (ats.coverage). Garde la MEILLEURE version
     (0 invention prioritaire, puis meilleure couverture). Retourne (result, err) avec
     result = {cv_markdown, ats_start, ats_final, iterations[], unsupported_final[]}."""
-    keywords = ats.extract_keywords(offer_text)
+    extra, _ = offer_keywords(offer_text, lang)             # mots-clés tous domaines (fail-open)
+    keywords = ats.extract_keywords(offer_text, extra=extra)
     current, err = tailored_cv(cv_text, offer_text, lang)   # génération initiale
     if err:
         return None, err

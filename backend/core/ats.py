@@ -1,14 +1,20 @@
 """Signal ATS déterministe : mots-clés d'une offre + couverture par le CV.
 
-Un ATS (Applicant Tracking System) matche des mots-clés. On extrait les termes
-techniques présents dans l'offre (liste curée, frontières de mot pour éviter les
-faux positifs) puis on mesure lesquels apparaissent dans le CV. Déterministe,
-testable sans réseau — complète l'analyse LLM d'un chiffre objectif.
+Un ATS (Applicant Tracking System) matche des mots-clés. On mesure, de façon
+déterministe (frontières de mot, casse-insensible), lesquels apparaissent dans le
+CV — un chiffre objectif qui complète l'analyse LLM.
+
+Les mots-clés à mesurer viennent de deux sources combinées :
+  1. `extra` — mots-clés extraits de l'offre par le LLM, TOUS DOMAINES (via
+     `agent.offer_keywords`). C'est la source principale, agnostique au métier.
+  2. `TECH_TERMS` — liste tech curée, gardée en SUPPLÉMENT/filet (utile pour les
+     offres tech même sans clé LLM). Domaine-agnostique = surtout porté par `extra`.
 """
 import re
 from typing import Dict, List
 
-# Termes techniques reconnus (élargir librement). Minuscule = comparaison casse-insensible.
+# Supplément tech curé (filet déterministe). Le gros du signal vient désormais des
+# mots-clés que le LLM extrait de l'offre (tous domaines) et passe via `extra`.
 TECH_TERMS = [
     # Langages
     "python", "javascript", "typescript", "java", "c++", "c#", "go", "rust", "php", "sql", "bash",

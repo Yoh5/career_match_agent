@@ -2,10 +2,13 @@
 
 Endpoints :
   POST /extract-cv    (multipart) → texte du CV
-  POST /analyze       → fit CV↔offre + mots-clés ATS + projets + suggestions CV
+  POST /analyze       → fit CV↔offre + mots-clés ATS + projets + suggestions + reco go/no-go
   POST /cover-letter  → lettre de motivation adaptée (fr/en, ATS)
   POST /tailored-cv   → CV réécrit pour l'offre (fr/en, ATS, Markdown)
+  POST /prepare       → agent autonome (ReAct) : prépare toute la candidature
+  GET  /memory        → profil agrégé + écarts récurrents (mémoire long terme)
 
+Tout est AGNOSTIQUE AU MÉTIER (les mots-clés ATS sont extraits de l'offre par le LLM).
 Sert aussi le frontend statique à la racine.
 """
 import os
@@ -22,7 +25,7 @@ try:
 except ImportError:
     pass
 
-from core import llm, ats, extract, agent
+from core import llm, ats, extract, agent, memory, orchestrator
 
 app = FastAPI(title="Career Match Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -89,12 +92,42 @@ def _guard_llm():
 def do_analyze(body: OfferBody):
     _guard_llm()
     cv, offer = _resolve(body)
-    keywords = ats.extract_keywords(offer)
+    extra, _kw_err = agent.offer_keywords(offer, body.lang)     # mots-clés tous domaines (fail-open)
+    keywords = ats.extract_keywords(offer, extra=extra)
     cov = ats.coverage(cv, keywords)
     data, err = agent.analyze(cv, offer, cov, body.lang)
     if err:
         raise HTTPException(502, f"Analyse indisponible : {err}")
-    return {"ats": cov, "keywords": keywords, "analysis": data}
+    # #4 mémoire : offre déjà vue ? écarts récurrents ?
+    prev = memory.recall(offer)
+    prof = memory.profile_summary()
+    note = ", ".join(g["keyword"] for g in prof.get("recurring_gaps", [])) or ""
+    # #5 planification / décision go-no-go
+    rec, _rerr = agent.recommend(data, cov, body.lang, memory_note=note)
+    memory.record_application(offer, {
+        "fit_score": data.get("fit_score"), "ats_pct": cov.get("pct"),
+        "recommendation": (rec or {}).get("decision"), "missing_keywords": cov.get("missing"),
+    })
+    return {"ats": cov, "keywords": keywords, "analysis": data,
+            "recommendation": rec, "memory": {"seen_before": bool(prev), "profile": prof}}
+
+
+@app.get("/memory")
+def do_memory():
+    """Profil agrégé du candidat + écarts récurrents (mémoire long terme)."""
+    return memory.profile_summary()
+
+
+@app.post("/prepare")
+def do_prepare(body: OfferBody):
+    """Agent autonome (ReAct) : le LLM enchaîne lui-même les outils (ATS, analyse,
+    mémoire, reco, lettre, CV) pour préparer toute la candidature."""
+    _guard_llm()
+    cv, offer = _resolve(body)
+    result, err = orchestrator.prepare_application(cv, offer, "", body.lang)
+    if err:
+        raise HTTPException(502, f"Agent indisponible : {err}")
+    return result
 
 
 @app.post("/cover-letter")

@@ -124,3 +124,39 @@ def test_optimize_cv_failopen_on_initial_error(monkeypatch):
     monkeypatch.setattr(agent, "tailored_cv", lambda *a, **k: (None, "pas de clé"))
     res, err = agent.optimize_cv(_CV, _OPT_OFFER, "fr")
     assert res is None and err == "pas de clé"
+
+
+# ── offer_keywords : extraction ATS tous domaines ──────────────
+
+def test_offer_keywords_parses_any_domain(monkeypatch):
+    fake = {"keywords": ["community management", "SEO", "Google Analytics", "  "]}
+    monkeypatch.setattr(agent.llm, "complete", _ok(json.dumps(fake)))
+    kws, err = agent.offer_keywords("Offre marketing digital…", "fr")
+    assert err is None
+    assert kws == ["community management", "SEO", "Google Analytics"]   # vides filtrés
+
+
+def test_offer_keywords_failopen(monkeypatch):
+    # fail-open : erreur LLM → ([], err), l'appelant retombe sur la liste tech
+    monkeypatch.setattr(agent.llm, "complete", _fail("pas de clé"))
+    kws, err = agent.offer_keywords("offre", "fr")
+    assert kws == [] and err == "pas de clé"
+
+
+# ── recommend : planification + go/no-go (#5) ──────────────────
+
+def test_recommend_parses_and_normalises(monkeypatch):
+    fake = {"decision": "Postuler", "confidence": 150,
+            "rationale": "Bon fit.", "action_plan": ["Ajoute Docker", "  "]}
+    monkeypatch.setattr(agent.llm, "complete", _ok(json.dumps(fake)))
+    rec, err = agent.recommend({"fit_score": 78, "gaps": ["Docker"]}, {"pct": 70, "missing": ["docker"]}, "fr")
+    assert err is None
+    assert rec["decision"] == "postuler"          # normalisé en minuscule
+    assert rec["confidence"] == 100               # borné
+    assert rec["action_plan"] == ["Ajoute Docker"]
+
+
+def test_recommend_error(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _fail())
+    rec, err = agent.recommend({"fit_score": 50}, {"pct": 40}, "fr")
+    assert rec is None and err

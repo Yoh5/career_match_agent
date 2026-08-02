@@ -43,6 +43,33 @@ def complete(prompt: str, json_mode: bool = True, max_tokens: int = 1600,
         return "", str(e)
 
 
+def complete_tools(messages: list, tools: list, tool_choice="auto",
+                   max_tokens: int = 1200, temperature: float = 0.2) -> tuple:
+    """Appel avec function-calling (ReAct). Retourne (msg, err) où
+    msg = {"content": str|None, "tool_calls": [{"id","name","arguments"(dict)}]}.
+    Jamais d'exception : err porte le message d'erreur."""
+    if not _key():
+        return None, "OPENAI_API_KEY manquante — ajoute ta clé dans backend/.env"
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=_key())
+        resp = client.chat.completions.create(
+            model=_model(), messages=messages, tools=tools,
+            tool_choice=tool_choice, max_tokens=max_tokens, temperature=temperature,
+        )
+        m = resp.choices[0].message
+        calls = []
+        for tc in (m.tool_calls or []):
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except (ValueError, TypeError):
+                args = {}
+            calls.append({"id": tc.id, "name": tc.function.name, "arguments": args})
+        return {"content": m.content, "tool_calls": calls}, None
+    except Exception as e:  # réseau, quota, auth…
+        return None, str(e)
+
+
 def parse_json(raw: str):
     """json.loads tolérant : réessaie sur le premier objet {...} trouvé."""
     if not raw:

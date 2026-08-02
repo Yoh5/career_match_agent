@@ -194,6 +194,33 @@
     padding:8px 12px;margin:10px 0 2px;font-weight:600;
   }
   .trace b{color:var(--accent-ink)}
+
+  /* Reco go/no-go */
+  .reco{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px;background:var(--surface-2)}
+  .reco.go{border-color:var(--ok-line);background:var(--ok-soft)}
+  .reco.mid{border-color:var(--warn);background:var(--warn-soft)}
+  .reco.no{border-color:var(--bad-line);background:var(--bad-soft)}
+  .reco-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .reco-badge{font-size:13px;font-weight:800;padding:4px 12px;border-radius:999px;color:#fff}
+  .reco.go .reco-badge{background:var(--ok)}.reco.mid .reco-badge{background:var(--warn)}.reco.no .reco-badge{background:var(--bad)}
+  .reco-conf{font-size:12px;color:var(--muted);font-weight:600}
+  .reco-why{font-size:13px;color:var(--ink-soft);margin-top:7px}
+  ul.plan{counter-reset:step;margin-top:9px}
+  ul.plan li{padding-left:26px;color:var(--ink-soft)}
+  ul.plan li::before{counter-increment:step;content:counter(step);
+    background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;left:0;top:1px}
+
+  /* Trace de l'agent (steps) */
+  .steps-trace{margin-top:6px}
+  .stepline{
+    display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 11px;margin-bottom:6px;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+  }
+  .stepline .tool{font-weight:700;color:var(--accent-ink);font-family:"SF Mono",ui-monospace,monospace;font-size:12px}
+  .stepline .res{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stepline .idx{width:20px;height:20px;flex-shrink:0;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
   .muted{color:var(--muted);font-size:12.5px}
 
   .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite}
@@ -217,7 +244,7 @@
       <div class="logo">🎯</div>
       <div>
         <h1>Career <b>Match</b> Agent</h1>
-        <div class="sub">Upload ton CV, colle une offre → score de fit ATS, projets à mettre en avant, suggestions, lettre &amp; CV adapté (FR/EN).</div>
+        <div class="sub">Tous métiers · Upload ton CV, colle une offre → score de fit ATS, décision go/no-go, projets à mettre en avant, suggestions, lettre &amp; CV adapté (FR/EN).</div>
       </div>
     </div>
     <button class="theme-toggle" id="themeToggle" title="Basculer le thème" aria-label="Basculer le thème clair/sombre">
@@ -260,8 +287,16 @@
       <button class="btn btn-p" id="btnAnalyze">📊 Analyser le fit</button>
       <button class="btn btn-s" id="btnLetter">✉️ Lettre de motivation</button>
       <button class="btn btn-s" id="btnCV">📝 CV adapté</button>
+      <button class="btn btn-p" id="btnAgent" title="L'agent enchaîne lui-même les outils">🤖 Préparer ma candidature (agent)</button>
     </div>
     <div id="globalErr" class="status err" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Trace de l'agent autonome -->
+  <div class="card hidden" id="agentCard">
+    <div class="card-label"><span class="badge">🤖</span> Agent autonome — trace des décisions</div>
+    <div class="trace" id="agentSummary" style="display:none"></div>
+    <div class="steps-trace" id="agentSteps"></div>
   </div>
 
   <!-- Résultats -->
@@ -274,6 +309,7 @@
         <div class="chips" id="kwMissing"></div>
       </div>
     </div>
+    <div id="recoBox"></div>
     <h3>✅ Points forts (vs l'offre)</h3><ul id="strengths"></ul>
     <h3>△ Écarts à combler</h3><ul class="gap" id="gaps"></ul>
     <h3>📌 Projets à mettre en avant</h3><ul id="projects"></ul>
@@ -359,6 +395,7 @@ $("btnAnalyze").onclick = async ()=>{
     $("verdict").textContent = a.verdict||"";
     $("atsLine").textContent = "Couverture mots-clés ATS : "+cov.pct+"% ("+cov.matched.length+"/"+(cov.matched.length+cov.missing.length)+")";
     $("kwMissing").innerHTML = (a.keywords_missing||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("");
+    renderReco(d.recommendation);
     fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
     $("analysisCard").classList.remove("hidden");
     markStep("step3", true);
@@ -366,6 +403,26 @@ $("btnAnalyze").onclick = async ()=>{
   }catch(err){ setErr(err.message); }
   finally{ busy($("btnAnalyze"),false); }
 };
+
+// Reco go/no-go (#5)
+const RECO = {
+  postuler:{cls:"go",txt:"✅ Postuler"}, apply:{cls:"go",txt:"✅ Apply"},
+  renforcer_puis_postuler:{cls:"mid",txt:"🛠️ Renforcer d'abord"}, strengthen_first:{cls:"mid",txt:"🛠️ Strengthen first"},
+  passer:{cls:"no",txt:"⏭️ Passer"}, skip:{cls:"no",txt:"⏭️ Skip"},
+};
+function renderReco(rec){
+  const box = $("recoBox");
+  if(!rec || !rec.decision){ box.innerHTML=""; return; }
+  const meta = RECO[rec.decision] || {cls:"mid",txt:rec.decision};
+  const plan = (rec.action_plan||[]).map(x=>"<li>"+esc(x)+"</li>").join("");
+  box.innerHTML =
+    '<div class="reco '+meta.cls+'">'+
+      '<div class="reco-head"><span class="reco-badge">'+esc(meta.txt)+'</span>'+
+      (rec.confidence!=null?'<span class="reco-conf">confiance '+rec.confidence+'%</span>':'')+'</div>'+
+      (rec.rationale?'<div class="reco-why">'+esc(rec.rationale)+'</div>':'')+
+      (plan?'<ul class="plan">'+plan+'</ul>':'')+
+    '</div>';
+}
 
 function letterOrCV(path, title, filename, btn, label){
   return async ()=>{
@@ -391,6 +448,65 @@ $("btnLetter").dataset.label = $("btnLetter").innerHTML;
 $("btnCV").dataset.label = $("btnCV").innerHTML;
 $("btnLetter").onclick = letterOrCV("/cover-letter","✉️ Lettre de motivation","lettre_motivation.txt",$("btnLetter"),"Rédaction…");
 $("btnCV").onclick = letterOrCV("/tailored-cv","📝 CV adapté (Markdown)","CV_adapte.md",$("btnCV"),"Génération…");
+
+// Agent autonome (#2) — /prepare : le LLM enchaîne lui-même les outils
+const STEP_LABEL = {
+  fetch_offer:"récupère l'offre", ats_coverage:"mesure l'ATS", analyze_fit:"analyse le fit",
+  recall_memory:"consulte la mémoire", recommend:"décide (go/no-go)",
+  write_cover_letter:"rédige la lettre", write_tailored_cv:"génère le CV adapté", finish:"conclut",
+};
+function stepResult(s){
+  const r = s.result||{};
+  if(r.error) return "⚠️ "+r.error;
+  if(s.tool==="ats_coverage") return "couverture "+r.pct+"%";
+  if(s.tool==="analyze_fit") return "fit "+r.fit_score+"/100";
+  if(s.tool==="recommend") return "→ "+(r.decision||"")+" ("+r.confidence+"%)";
+  if(s.tool==="write_tailored_cv") return "ATS "+r.ats_start+"% → "+r.ats_final+"% · "+r.unsupported_final+" invention(s)";
+  if(s.tool==="recall_memory") return r.seen_before?"offre déjà vue":"nouvelle offre";
+  if(s.tool==="write_cover_letter") return "lettre rédigée";
+  if(s.tool==="finish") return r.done?"terminé":"";
+  return "";
+}
+$("btnAgent").dataset.label = $("btnAgent").innerHTML;
+$("btnAgent").onclick = async ()=>{
+  setErr(""); busy($("btnAgent"),true,"L'agent travaille…");
+  try{
+    const d = await post("/prepare", body());
+    // trace des étapes
+    $("agentSteps").innerHTML = (d.steps||[]).map((s,i)=>
+      '<div class="stepline"><span class="idx">'+(i+1)+'</span>'+
+      '<span class="tool">'+esc(s.tool)+'</span>'+
+      '<span class="res">'+esc((STEP_LABEL[s.tool]||"")+(stepResult(s)?" — "+stepResult(s):""))+'</span></div>').join("");
+    if(d.summary){ $("agentSummary").style.display=""; $("agentSummary").innerHTML="🤖 <b>Bilan :</b> "+esc(d.summary); }
+    else { $("agentSummary").style.display="none"; }
+    $("agentCard").classList.remove("hidden");
+    // reproduit l'analyse + la reco si l'agent les a produites
+    if(d.analysis){
+      const a=d.analysis, cov=d.ats||{matched:[],missing:[]}, s=a.fit_score;
+      const g=$("gauge"); g.textContent=s; g.style.background=s>=70?"var(--ok)":s>=45?"var(--warn)":"var(--bad)";
+      $("verdict").textContent=a.verdict||"";
+      $("atsLine").textContent="Couverture mots-clés ATS : "+(cov.pct??"–")+"%";
+      $("kwMissing").innerHTML=(a.keywords_missing||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("");
+      renderReco(d.recommendation);
+      fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
+      $("analysisCard").classList.remove("hidden");
+    }
+    // affiche le livrable principal (CV adapté sinon lettre)
+    if(d.tailored_cv && d.tailored_cv.cv_markdown){
+      $("outTitle").textContent="📝 CV adapté (agent)"; $("outText").textContent=d.tailored_cv.cv_markdown;
+      const inv=(d.tailored_cv.unsupported_final||[]).length;
+      $("outMeta").className="trace";
+      $("outMeta").innerHTML="🤖 <span>Boucle agentique :</span> ATS <b>"+d.tailored_cv.ats_start+"% → "+d.tailored_cv.ats_final+"%</b> · "+(inv===0?"<b>0 invention ✓</b>":inv+" à vérifier");
+      $("btnDownload").dataset.file="CV_adapte.md"; $("outCard").classList.remove("hidden");
+    } else if(d.cover_letter){
+      $("outTitle").textContent="✉️ Lettre de motivation (agent)"; $("outText").textContent=d.cover_letter;
+      $("outMeta").className="hidden"; $("btnDownload").dataset.file="lettre_motivation.txt"; $("outCard").classList.remove("hidden");
+    }
+    markStep("step3", true);
+    $("agentCard").scrollIntoView({behavior:"smooth"});
+  }catch(err){ setErr(err.message); }
+  finally{ busy($("btnAgent"),false); }
+};
 
 $("btnCopy").onclick = ()=>{
   navigator.clipboard.writeText($("outText").textContent);
