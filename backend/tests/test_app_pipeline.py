@@ -147,6 +147,25 @@ def test_source_ranks_by_target_description(monkeypatch):
     assert items[0]["match_pct"] > (items[1]["match_pct"] or 0)
 
 
+def test_direct_export_letter_docx_and_cv_pdf():
+    """Section 1 (analyse classique) : exports directs sans passer par le pipeline."""
+    r = client.post("/export/letter.docx", json={"text": "Madame, Monsieur,\n\nMa candidature.\n\nCordialement."})
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    assert "wordprocessingml" in r.headers["content-type"]
+    r = client.post("/export/cv.pdf", json={"cv_markdown": "# Axel AHO\n## Profil\n- Python",
+                                            "cv_structured": None, "lang": "fr"})
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    # structuré fourni → template 2 colonnes
+    r = client.post("/export/cv.pdf", json={"cv_markdown": "# x",
+                                            "cv_structured": {"name": "Axel AHO", "role": "Ingénieur IA",
+                                                              "summary": "Agents LLM."},
+                                            "lang": "fr"})
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    # vides → 422
+    assert client.post("/export/letter.docx", json={"text": ""}).status_code == 422
+    assert client.post("/export/cv.pdf", json={"cv_markdown": " "}).status_code == 422
+
+
 def test_exports_docx_and_pdf(monkeypatch):
     oid = _seed_offer(monkeypatch)
     # pas encore préparé → 422

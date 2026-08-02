@@ -176,11 +176,49 @@ def do_tailored_cv(body: OfferBody):
     return {
         "tailored_cv_markdown": md,
         "tailored_cv_html": render.cv_html(md, structured, body.lang),
+        "cv_structured": structured,               # pour l'export PDF sans rappel LLM
         "ats_start": result["ats_start"],
         "ats_final": result["ats_final"],
         "iterations": result["iterations"],
         "unsupported_final": result["unsupported_final"],
     }
+
+
+# ── Exports directs (section 1 : analyse classique, sans passer par le pipeline) ──
+
+class LetterExportBody(BaseModel):
+    text: str
+
+
+@app.post("/export/letter.docx")
+def do_export_letter(body: LetterExportBody):
+    """Lettre (texte) → fichier Word téléchargeable."""
+    if len((body.text or "").strip()) < 10:
+        raise HTTPException(422, "Lettre vide — génère-la d'abord.")
+    return Response(
+        content=export.letter_docx(body.text),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": 'attachment; filename="Lettre_motivation.docx"'},
+    )
+
+
+class CvExportBody(BaseModel):
+    cv_markdown: str
+    cv_structured: Optional[dict] = None   # renvoyé par /tailored-cv ou /prepare
+    lang: str = "fr"
+
+
+@app.post("/export/cv.pdf")
+def do_export_cv(body: CvExportBody):
+    """CV adapté (Markdown + JSON structuré éventuel) → PDF 2 colonnes téléchargeable."""
+    has_structured = isinstance(body.cv_structured, dict) and (body.cv_structured.get("name") or "").strip()
+    if not has_structured and len((body.cv_markdown or "").strip()) < 10:
+        raise HTTPException(422, "CV vide — génère-le d'abord.")
+    return Response(
+        content=export.cv_pdf(body.cv_structured, body.cv_markdown, body.lang),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="CV_adapte.pdf"'},
+    )
 
 
 # ═══ Pipeline de stages : sourcing → analyse → dossier prêt → envoi (à toi) ═══

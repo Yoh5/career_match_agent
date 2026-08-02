@@ -143,6 +143,7 @@ def _run_tool(name: str, args: dict, ctx: dict) -> dict:
             return {"error": err}
         structured, _ = agent.cv_to_structured(res["cv_markdown"], ctx["lang"])   # fail-open
         res["cv_html"] = render.cv_html(res["cv_markdown"], structured, ctx["lang"])
+        res["cv_structured"] = structured          # pour l'export PDF sans rappel LLM
         out["tailored_cv"] = res
         return {"ats_start": res["ats_start"], "ats_final": res["ats_final"],
                 "unsupported_final": len(res["unsupported_final"])}

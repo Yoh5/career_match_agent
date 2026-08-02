@@ -348,8 +348,8 @@
         <button class="btn btn-g" id="btnDownload">⬇️ Markdown</button>
         <button class="btn btn-g hidden" id="btnHtml">⬇️ HTML</button>
         <button class="btn btn-g hidden" id="btnPrint">🖨️ Imprimer / PDF</button>
-        <a class="btn btn-g hidden" id="btnDocx">⬇️ Lettre (Word)</a>
-        <a class="btn btn-g hidden" id="btnPdf">⬇️ CV (PDF)</a>
+        <button class="btn btn-g hidden" id="btnDocx">⬇️ Lettre (Word)</button>
+        <button class="btn btn-g hidden" id="btnPdf">⬇️ CV (PDF)</button>
       </div>
     </div>
     <div id="outMeta" class="hidden"></div>
@@ -528,7 +528,10 @@ function letterOrCV(path, title, filename, btn, label){
       const text = d.cover_letter ?? d.tailored_cv_markdown ?? "";
       $("outTitle").textContent = title; $("outText").textContent = text;
       setCvHtml(d.tailored_cv_html || "");
-      $("btnDocx").classList.add("hidden"); $("btnPdf").classList.add("hidden"); $("applyBar").classList.add("hidden");
+      $("applyBar").classList.add("hidden");
+      // exports Word/PDF : lettre → .docx, CV adapté → .pdf (mise en page)
+      setExports(d.cover_letter ? {letter:d.cover_letter}
+                : {cv_markdown:d.tailored_cv_markdown, cv_structured:d.cv_structured||null});
       if (d.ats_final !== undefined && d.ats_final !== null){
         const inv = (d.unsupported_final||[]).length;
         $("outMeta").className = "trace";
@@ -589,8 +592,10 @@ $("btnAgent").onclick = async ()=>{
       fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
       $("analysisCard").classList.remove("hidden");
     }
-    // affiche le livrable principal (CV adapté sinon lettre)
-    $("btnDocx").classList.add("hidden"); $("btnPdf").classList.add("hidden"); $("applyBar").classList.add("hidden");
+    // affiche le livrable principal (CV adapté sinon lettre) + exports Word/PDF
+    $("applyBar").classList.add("hidden");
+    setExports({letter:d.cover_letter||"", cv_markdown:(d.tailored_cv||{}).cv_markdown||"",
+                cv_structured:(d.tailored_cv||{}).cv_structured||null});
     if(d.tailored_cv && d.tailored_cv.cv_markdown){
       $("outTitle").textContent="📝 CV adapté (agent)"; $("outText").textContent=d.tailored_cv.cv_markdown;
       const inv=(d.tailored_cv.unsupported_final||[]).length;
@@ -619,6 +624,37 @@ function setCvHtml(html){
   $("btnHtml").classList.toggle("hidden", !lastCvHtml);
   $("btnPrint").classList.toggle("hidden", !lastCvHtml);
 }
+
+/* ── Exports Word / PDF (section 1 ET pipeline) ─────────────────────────────
+   exportCtx : {itemId} = dossier du pipeline (GET), sinon contenu direct (POST). */
+let exportCtx = null;
+function setExports(ctx){
+  exportCtx = ctx || null;
+  const c = exportCtx || {};
+  $("btnDocx").classList.toggle("hidden", !(c.itemId ? c.hasLetter : !!c.letter));
+  $("btnPdf").classList.toggle("hidden", !(c.itemId ? c.hasCv : !!c.cv_markdown));
+}
+async function blobDownload(path, body, filename){
+  const r = await fetch(API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
+  if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.detail||("Erreur "+r.status)); }
+  const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+$("btnDocx").onclick = async ()=>{
+  if(!exportCtx) return;
+  try{
+    if(exportCtx.itemId) window.location = API+"/pipeline/"+exportCtx.itemId+"/letter.docx";
+    else await blobDownload("/export/letter.docx", {text:exportCtx.letter}, "Lettre_motivation.docx");
+  }catch(err){ setErr(err.message); }
+};
+$("btnPdf").onclick = async ()=>{
+  if(!exportCtx) return;
+  try{
+    if(exportCtx.itemId) window.location = API+"/pipeline/"+exportCtx.itemId+"/cv.pdf";
+    else await blobDownload("/export/cv.pdf", {cv_markdown:exportCtx.cv_markdown,
+      cv_structured:exportCtx.cv_structured||null, lang:$("lang").value}, "CV_adapte.pdf");
+  }catch(err){ setErr(err.message); }
+};
 function download(content, filename, mime){
   const blob = new Blob([content],{type:mime+";charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
@@ -817,11 +853,8 @@ function showPrepared(id, p, forApply){
                                        : "🧰 Dossier de candidature — prêt à envoyer";
   $("outText").textContent = parts.join("\n\n\n") || "(dossier vide — clique 🧰 Préparer)";
   setCvHtml(p.cv_html||"");
-  // exports bureautiques
-  $("btnDocx").classList.toggle("hidden", !p.cover_letter);
-  $("btnDocx").href = API+"/pipeline/"+id+"/letter.docx";
-  $("btnPdf").classList.toggle("hidden", !p.cv_markdown);
-  $("btnPdf").href = API+"/pipeline/"+id+"/cv.pdf";
+  // exports bureautiques du dossier (servis par le backend)
+  setExports({itemId:id, hasLetter:!!p.cover_letter, hasCv:!!p.cv_markdown});
   if(p.ats_final !== undefined && p.ats_final !== null){
     const inv=(p.unsupported_final||[]).length;
     $("outMeta").className="trace";

@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 97 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 98 unit tests (no network, no API key)
 
 ---
 
@@ -26,6 +26,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (standard sections, exact keywords you truly have). |
 | 📄 **Designed HTML CV** | The tailored CV is rendered as a **professional two-column HTML** (accent header, skills sidebar, A4 print) — the LLM structures your CV into JSON, a fixed template lays it out. One click to **download HTML or print to PDF**; falls back to a clean single-column render. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
+| ⬇️ **Word & PDF downloads** | Everywhere — single offer *and* pipeline — the cover letter downloads as **.docx** and the tailored CV as a **designed 2-column PDF** (pure Python, no headless browser). |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
 | 🛡️ **ATS-optimised** | Plain, keyword-aligned, parsable output — to pass automated screening. |
@@ -97,7 +98,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 97 tests, no network / no API key
+python -m pytest tests/ -q                          # 98 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -117,6 +118,7 @@ python -m pytest tests/ -q                          # 97 tests, no network / no 
 | `POST /pipeline/{id}/prepare` | `{cv_text, lang, tone, my_name, first_name, letter_style}` | full kit: CV md+HTML, letter, outreach messages |
 | `GET /pipeline/{id}/letter.docx` · `GET /pipeline/{id}/cv.pdf` | — | cover letter as **Word**, tailored CV as **designed PDF** |
 | `GET \| PUT /templates` | `{templates}` | message templates + the cover-letter **prompt** |
+| `POST /export/letter.docx` · `POST /export/cv.pdf` | `{text}` · `{cv_markdown, cv_structured, lang}` | any letter → **Word**, any tailored CV → **designed PDF** (used by the single-offer flow) |
 
 ## 🗂️ Layout
 
@@ -137,7 +139,7 @@ backend/
     pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
     templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
     export.py       cover letter → Word (.docx) · tailored CV → designed 2-column PDF (fpdf2)
-  tests/            97 unit tests (agent, ats, memory, orchestrator, render, extract, app,
+  tests/            98 unit tests (agent, ats, memory, orchestrator, render, extract, app,
                     sources, pipeline, templates, export)
 frontend/index.html  single-page UI (light/dark)
 ```
