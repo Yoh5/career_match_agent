@@ -226,6 +226,31 @@
   .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite}
   @keyframes s{to{transform:rotate(360deg)}}
 
+  /* Pipeline de stages */
+  .pipe-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  .pipe-table th{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
+    text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
+  .pipe-table td{padding:9px;border-bottom:1px solid var(--line-soft);color:var(--ink-soft);vertical-align:top}
+  .pipe-table tr:hover td{background:var(--surface-2)}
+  .pipe-title{font-weight:700;color:var(--ink)}
+  .pipe-sub{font-size:11.5px;color:var(--muted)}
+  .st{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:3px 9px;border-radius:999px}
+  .st-sourced{background:var(--accent-soft);color:var(--accent-ink)}
+  .st-analyzed{background:var(--warn-soft);color:var(--warn)}
+  .st-ready{background:var(--ok-soft);color:var(--ok)}
+  .st-sent{background:var(--ok);color:#fff}
+  .st-skipped{background:var(--surface-3);color:var(--muted)}
+  .mini{padding:5px 10px;font-size:12px;border-radius:8px}
+  .pipe-actions{display:flex;gap:6px;flex-wrap:wrap}
+  .fitcell{font-weight:800}
+  .tpl-grid{display:grid;gap:12px;margin-top:10px}
+  .tpl-grid textarea{min-height:88px;font-size:12.5px}
+  details.adv{margin-top:12px}
+  details.adv summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent-ink)}
+  .note{font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);
+    border-radius:9px;padding:9px 12px;margin-top:10px}
+  .table-wrap{overflow-x:auto}
+
   footer{text-align:center;color:var(--faint);font-size:12px;margin-top:34px}
   footer a{color:var(--accent-ink);text-decoration:none}
   footer a:hover{text-decoration:underline}
@@ -327,6 +352,66 @@
     </div>
     <div id="outMeta" class="hidden"></div>
     <pre id="outText"></pre>
+  </div>
+
+  <!-- Pipeline de stages : sourcing → dossier prêt → envoi (à toi) -->
+  <div class="card" id="pipeCard">
+    <div class="card-label"><span class="badge">🎯</span> Pipeline de stages — l'agent cherche &amp; prépare, TOI tu envoies</div>
+    <div class="row">
+      <div><label>Mots-clés (métier, techno…) — séparés par des virgules</label>
+        <input type="text" id="srcKeywords" placeholder="data, IA, marketing digital…"></div>
+      <div><label>Localisation (optionnel)</label>
+        <input type="text" id="srcLocation" placeholder="Maroc, Casablanca, Paris, Remote…"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div><label>Boards Greenhouse (slugs)</label><input type="text" id="srcGreenhouse" placeholder="datadog, mistral…"></div>
+      <div><label>Entreprises Lever (slugs)</label><input type="text" id="srcLever" placeholder="spendesk, backmarket…"></div>
+      <div><label>Orgs Ashby (slugs)</label><input type="text" id="srcAshby" placeholder="linear, ramp…"></div>
+    </div>
+    <div class="row" style="margin-top:12px;align-items:center">
+      <div style="flex:0 0 auto;min-width:0"><label style="display:inline-flex;align-items:center;gap:7px;text-transform:none;font-size:12.5px;cursor:pointer">
+        <input type="checkbox" id="srcRemoteok" style="width:auto"> + RemoteOK (agrégateur remote)</label></div>
+      <div style="flex:0 0 auto;min-width:0"><label style="display:inline-flex;align-items:center;gap:7px;text-transform:none;font-size:12.5px;cursor:pointer">
+        <input type="checkbox" id="srcInternOnly" checked style="width:auto"> Stages / alternances uniquement</label></div>
+      <div><label>Ton nom (signature des messages)</label><input type="text" id="myName" placeholder="Prénom NOM"></div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-p" id="btnSource">🔎 Sourcer les offres</button>
+      <button class="btn btn-g" id="btnRefreshPipe">↻ Rafraîchir</button>
+    </div>
+    <div id="srcStatus" class="status" style="margin-top:10px"></div>
+    <div class="table-wrap"><table class="pipe-table hidden" id="pipeTable">
+      <thead><tr><th>Offre</th><th>Statut</th><th>Fit</th><th>Actions</th></tr></thead>
+      <tbody id="pipeBody"></tbody>
+    </table></div>
+    <div class="note">🛡️ L'agent ne postule jamais à ta place : il source (APIs publiques Greenhouse/Lever/Ashby/RemoteOK),
+      analyse, prépare CV adapté + lettre + messages depuis <b>tes templates</b> — l'envoi reste ton clic
+      (ou passe par <b>lemlist</b> si configuré, qui gère l'outreach LinkedIn/e-mail en sécurité).</div>
+
+    <details class="adv" id="tplDetails">
+      <summary>✏️ Mes templates de message (invitation LinkedIn · message · e-mail)</summary>
+      <div class="tpl-grid">
+        <div><label>Invitation LinkedIn (≤300 caractères)</label><textarea id="tplInvite"></textarea></div>
+        <div><label>Message LinkedIn (après connexion)</label><textarea id="tplMessage"></textarea></div>
+        <div><label>E-mail de candidature</label><textarea id="tplEmail"></textarea></div>
+        <div class="muted">Placeholders : {company} {role} {my_name} {first_name} {highlight} {link}</div>
+        <div><button class="btn btn-s" id="btnSaveTpl">💾 Enregistrer mes templates</button>
+          <span id="tplStatus" class="status" style="margin-left:10px"></span></div>
+      </div>
+    </details>
+
+    <details class="adv" id="lemlistBox">
+      <summary>📤 Envoi outreach via lemlist <span id="lemState" class="muted"></span></summary>
+      <div class="row" style="margin-top:10px">
+        <div><label>Campagne</label><select id="lemCampaign"></select></div>
+        <div><label>E-mail du recruteur</label><input type="text" id="lemEmail" placeholder="prenom.nom@entreprise.com"></div>
+        <div><label>Prénom recruteur</label><input type="text" id="lemFirst" placeholder="Marie"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-p" id="btnLemSend" disabled>📤 Envoyer via lemlist</button>
+        <span class="muted" id="lemHint">Sélectionne d'abord une offre « prête » dans le tableau (bouton 👁 Voir).</span>
+      </div>
+    </details>
   </div>
 
   <footer>
@@ -541,7 +626,174 @@ $("btnPrint").onclick = ()=>{
 };
 
 function fill(id,arr){ $(id).innerHTML=(arr||[]).map(x=>"<li>"+esc(x)+"</li>").join("") || '<li class="muted">—</li>'; }
-function esc(s){ return String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+/* ── Pipeline de stages : sourcing → analyse → dossier → envoi (à toi) ───── */
+let selectedItem = null;                 // offre sélectionnée (pour lemlist)
+const csv = v => v.split(",").map(s=>s.trim()).filter(Boolean);
+const ST_LABEL = {sourced:"sourcée", analyzed:"analysée", ready:"✅ prête", sent:"📤 envoyée", skipped:"ignorée"};
+
+async function getJSON(path){ const r=await fetch(API+path); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||("Erreur "+r.status)); return d; }
+async function putJSON(path, body){ const r=await fetch(API+path,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||("Erreur "+r.status)); return d; }
+
+function renderPipe(items){
+  const tb = $("pipeBody");
+  if(!items || !items.length){ $("pipeTable").classList.add("hidden"); return; }
+  tb.innerHTML = items.map(it=>{
+    const fit = it.fit_score!=null ? it.fit_score : "–";
+    const ats = it.ats_pct!=null ? " · ATS "+it.ats_pct+"%" : "";
+    const ready = it.status==="ready" || (it.prepared_keys||[]).length>0;
+    return '<tr data-id="'+esc(it.id)+'">'+
+      '<td><div class="pipe-title">'+esc(it.title)+'</div>'+
+      '<div class="pipe-sub">'+esc(it.company||it.source)+(it.location?" · "+esc(it.location):"")+'</div></td>'+
+      '<td><span class="st st-'+esc(it.status)+'">'+esc(ST_LABEL[it.status]||it.status)+'</span></td>'+
+      '<td class="fitcell">'+fit+'<span class="pipe-sub">'+ats+'</span></td>'+
+      '<td><div class="pipe-actions">'+
+        '<button class="btn btn-s mini" data-act="analyze">📊 Analyser</button>'+
+        '<button class="btn btn-s mini" data-act="prepare">🧰 Préparer</button>'+
+        (ready?'<button class="btn btn-g mini" data-act="view">👁 Voir</button>':'')+
+        (it.url?'<a class="btn btn-g mini" href="'+esc(it.url)+'" target="_blank" rel="noopener">↗ Offre</a>':'')+
+        '<button class="btn btn-g mini" data-act="sent" title="Marquer comme envoyée">✓</button>'+
+        '<button class="btn btn-g mini" data-act="skipped" title="Ignorer">✕</button>'+
+      '</div></td></tr>';
+  }).join("");
+  $("pipeTable").classList.remove("hidden");
+}
+
+async function refreshPipe(){
+  try{ const d = await getJSON("/pipeline"); renderPipe(d.items); }catch(e){}
+}
+
+$("btnSource").dataset.label = $("btnSource").innerHTML;
+$("btnSource").onclick = async ()=>{
+  setErr(""); busy($("btnSource"),true,"Sourcing…");
+  $("srcStatus").className="status"; $("srcStatus").textContent="";
+  try{
+    const d = await post("/source", {
+      keywords: csv($("srcKeywords").value), location: csv($("srcLocation").value),
+      greenhouse: csv($("srcGreenhouse").value), lever: csv($("srcLever").value),
+      ashby: csv($("srcAshby").value), remoteok: $("srcRemoteok").checked,
+      internship_only: $("srcInternOnly").checked,
+    });
+    $("srcStatus").className="status ok";
+    $("srcStatus").textContent = "✓ "+d.found+" offre(s) trouvée(s), "+d.added+" nouvelle(s) dans le pipeline"+
+      (d.errors && d.errors.length ? " — sources en erreur : "+d.errors.join(" ; ") : "");
+    renderPipe(d.items);
+  }catch(err){ $("srcStatus").className="status err"; $("srcStatus").textContent="✗ "+err.message; }
+  finally{ busy($("btnSource"),false); }
+};
+$("btnRefreshPipe").onclick = refreshPipe;
+
+$("pipeBody").addEventListener("click", async e=>{
+  const btn = e.target.closest("button[data-act]"); if(!btn) return;
+  const id = btn.closest("tr").dataset.id, act = btn.dataset.act;
+  if(act==="sent" || act==="skipped"){
+    try{ await post("/pipeline/"+id+"/status", {status:act}); refreshPipe(); }catch(err){ setErr(err.message); }
+    return;
+  }
+  if(act==="view"){ return viewItem(id); }
+  if(!cvText){ setErr("Upload d'abord ton CV (étape 1) — il sert de base à l'analyse et au CV adapté."); return; }
+  const old = btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    if(act==="analyze"){
+      const d = await post("/pipeline/"+id+"/analyze", {cv_text:cvText, lang:$("lang").value});
+      showAnalysis(d.analysis, d.ats, d.recommendation);
+    } else if(act==="prepare"){
+      const d = await post("/pipeline/"+id+"/prepare", {cv_text:cvText, lang:$("lang").value,
+        tone:$("tone").value, my_name:$("myName").value, first_name:$("lemFirst").value});
+      selectedItem = {id:id, prepared:d.prepared};
+      showPrepared(id, d.prepared);
+    }
+    refreshPipe();
+  }catch(err){ setErr(err.message); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+});
+
+function showAnalysis(a, cov, rec){
+  if(!a) return;
+  const s=a.fit_score, g=$("gauge");
+  g.textContent=s; g.style.background=s>=70?"var(--ok)":s>=45?"var(--warn)":"var(--bad)";
+  $("verdict").textContent=a.verdict||"";
+  $("atsLine").textContent="Couverture mots-clés ATS : "+((cov||{}).pct??"–")+"%";
+  $("kwMissing").innerHTML=(a.keywords_missing||[]).map(k=>'<span class="chip">'+esc(k)+'</span>').join("");
+  renderReco(rec);
+  fill("strengths",a.strengths); fill("gaps",a.gaps); fill("projects",a.projects_to_highlight); fill("suggestions",a.cv_suggestions);
+  $("analysisCard").classList.remove("hidden");
+  $("analysisCard").scrollIntoView({behavior:"smooth"});
+}
+
+async function viewItem(id){
+  try{
+    const it = await getJSON("/pipeline/"+id);
+    selectedItem = {id:id, prepared:it.prepared||{}};
+    showPrepared(id, it.prepared||{});
+  }catch(err){ setErr(err.message); }
+}
+
+function showPrepared(id, p){
+  const parts = [];
+  if(p.messages && p.messages.linkedin_invite) parts.push("── INVITATION LINKEDIN (≤300 car.) ──\n\n"+p.messages.linkedin_invite);
+  if(p.messages && p.messages.linkedin_message) parts.push("── MESSAGE LINKEDIN ──\n\n"+p.messages.linkedin_message);
+  if(p.messages && p.messages.email) parts.push("── E-MAIL ──\n\n"+p.messages.email);
+  if(p.cover_letter) parts.push("── LETTRE DE MOTIVATION ──\n\n"+p.cover_letter);
+  if(p.cv_markdown) parts.push("── CV ADAPTÉ (Markdown) ──\n\n"+p.cv_markdown);
+  $("outTitle").textContent = "🧰 Dossier de candidature — prêt à envoyer";
+  $("outText").textContent = parts.join("\n\n\n") || "(dossier vide — clique 🧰 Préparer)";
+  setCvHtml(p.cv_html||"");
+  if(p.ats_final !== undefined && p.ats_final !== null){
+    const inv=(p.unsupported_final||[]).length;
+    $("outMeta").className="trace";
+    $("outMeta").innerHTML="🤖 <span>Boucle agentique :</span> ATS <b>"+p.ats_start+"% → "+p.ats_final+"%</b> · "+(inv===0?"<b>0 invention ✓</b>":inv+" à vérifier");
+  } else { $("outMeta").className="hidden"; }
+  $("btnDownload").dataset.file="dossier_candidature.txt";
+  $("outCard").classList.remove("hidden");
+  $("btnLemSend").disabled = !(window._lemEnabled && p.messages);
+  $("lemHint").textContent = p.messages ? "Offre sélectionnée — renseigne l'e-mail du recruteur puis Envoyer." :
+    "Sélectionne d'abord une offre « prête » dans le tableau (bouton 👁 Voir).";
+  $("outCard").scrollIntoView({behavior:"smooth"});
+}
+
+/* Templates éditables */
+async function loadTemplates(){
+  try{
+    const t = await getJSON("/templates");
+    $("tplInvite").value = t.linkedin_invite||""; $("tplMessage").value = t.linkedin_message||""; $("tplEmail").value = t.email||"";
+  }catch(e){}
+}
+$("btnSaveTpl").onclick = async ()=>{
+  try{
+    await putJSON("/templates", {templates:{linkedin_invite:$("tplInvite").value, linkedin_message:$("tplMessage").value, email:$("tplEmail").value}});
+    $("tplStatus").className="status ok"; $("tplStatus").textContent="✓ Enregistrés";
+    setTimeout(()=>$("tplStatus").textContent="",1600);
+  }catch(err){ $("tplStatus").className="status err"; $("tplStatus").textContent="✗ "+err.message; }
+};
+
+/* lemlist */
+async function loadOutreach(){
+  try{
+    const d = await getJSON("/outreach/status");
+    window._lemEnabled = !!d.enabled;
+    $("lemState").textContent = d.enabled ? "— ✓ configuré" : "— non configuré (LEMLIST_API_KEY)";
+    $("lemCampaign").innerHTML = (d.campaigns||[]).map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>').join("") ||
+      '<option value="">(aucune campagne)</option>';
+  }catch(e){ window._lemEnabled=false; $("lemState").textContent="— non configuré"; }
+}
+$("btnLemSend").onclick = async ()=>{
+  if(!selectedItem){ setErr("Sélectionne d'abord une offre préparée (👁 Voir)."); return; }
+  const email = $("lemEmail").value.trim();
+  if(!email){ setErr("Renseigne l'e-mail du recruteur."); return; }
+  if(!confirm("Envoyer ce recruteur + le message préparé dans la campagne lemlist sélectionnée ?")) return;
+  const b=$("btnLemSend"); b.disabled=true;
+  try{
+    await post("/outreach/send", {item_id:selectedItem.id, campaign_id:$("lemCampaign").value,
+      email:email, first_name:$("lemFirst").value, template:"linkedin_message"});
+    setErr(""); $("lemHint").textContent="✓ Poussé dans lemlist — l'envoi (throttlé) suivra la campagne.";
+    refreshPipe();
+  }catch(err){ setErr(err.message); }
+  finally{ b.disabled=false; }
+};
+
+refreshPipe(); loadTemplates(); loadOutreach();
 </script>
 </body>
 </html>

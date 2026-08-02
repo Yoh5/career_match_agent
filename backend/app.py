@@ -8,7 +8,19 @@ Endpoints :
   POST /prepare       → agent autonome (ReAct) : prépare toute la candidature
   GET  /memory        → profil agrégé + écarts récurrents (mémoire long terme)
 
+Pipeline de stages (sourcing → dossier prêt → envoi human-in-the-loop) :
+  POST /source                  → cherche des offres (APIs publiques ATS) → pipeline
+  GET  /pipeline                → file d'offres (+ ?status=)
+  POST /pipeline/{id}/analyze   → fit + ATS + go/no-go sur une offre du pipeline
+  POST /pipeline/{id}/prepare   → dossier complet : CV adapté (md+HTML) + lettre + messages
+  POST /pipeline/{id}/status    → marquer sent / skipped / …
+  GET|PUT /templates            → templates de message d'outreach (éditables)
+  GET  /outreach/status         → lemlist configuré ? campagnes ?
+  POST /outreach/send           → pousse le recruteur + message dans une campagne lemlist
+                                  (déclenché par un clic utilisateur — jamais en masse)
+
 Tout est AGNOSTIQUE AU MÉTIER (les mots-clés ATS sont extraits de l'offre par le LLM).
+L'agent ne soumet JAMAIS une candidature lui-même : il prépare, tu envoies.
 Sert aussi le frontend statique à la racine.
 """
 import os
@@ -25,7 +37,15 @@ try:
 except ImportError:
     pass
 
-from core import llm, ats, extract, agent, memory, orchestrator, render
+# TLS via le magasin de certificats du système (Windows/macOS) — indispensable
+# derrière certains proxys/antivirus d'entreprise. Jamais de verify=False.
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
+from core import llm, ats, extract, agent, memory, orchestrator, render, sources, pipeline, templates, outreach
 
 app = FastAPI(title="Career Match Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -159,3 +179,205 @@ def do_tailored_cv(body: OfferBody):
         "iterations": result["iterations"],
         "unsupported_final": result["unsupported_final"],
     }
+
+
+# ═══ Pipeline de stages : sourcing → analyse → dossier prêt → envoi (à toi) ═══
+
+class SourceBody(BaseModel):
+    keywords: list[str] = []
+    location: list[str] = []
+    internship_only: bool = True
+    greenhouse: list[str] = []      # slugs de boards Greenhouse
+    lever: list[str] = []           # slugs d'entreprises Lever
+    ashby: list[str] = []           # slugs d'orgs Ashby
+    remoteok: bool = False
+    limit: int = 40
+
+
+@app.post("/source")
+def do_source(body: SourceBody):
+    """Cherche des offres de stage via les APIs PUBLIQUES d'ATS et alimente le pipeline."""
+    if not (body.greenhouse or body.lever or body.ashby or body.remoteok):
+        raise HTTPException(422, "Indique au moins une source : boards Greenhouse/Lever/Ashby ou RemoteOK.")
+    offers, errors = sources.search(body.model_dump())
+    added = pipeline.add_offers(offers)
+    return {"found": len(offers), "added": added, "errors": errors,
+            "stats": pipeline.stats(), "items": pipeline.list_items()}
+
+
+@app.get("/pipeline")
+def do_pipeline(status: Optional[str] = None):
+    return {"stats": pipeline.stats(), "items": pipeline.list_items(status)}
+
+
+class StatusBody(BaseModel):
+    status: str
+
+
+@app.post("/pipeline/{item_id}/status")
+def do_pipeline_status(item_id: str, body: StatusBody):
+    try:
+        item = pipeline.update(item_id, status=body.status)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    if not item:
+        raise HTTPException(404, "Offre introuvable dans le pipeline")
+    return {"ok": True, "id": item_id, "status": body.status}
+
+
+def _pipeline_offer(item_id: str) -> tuple:
+    """(item, offer_text) — récupère le texte de l'offre (description sourcée,
+    sinon fetch de l'URL en repli)."""
+    item = pipeline.get(item_id)
+    if not item:
+        raise HTTPException(404, "Offre introuvable dans le pipeline")
+    offer = (item.get("offer_text") or "").strip()
+    if len(offer) < 30 and item.get("url"):
+        offer, err = extract.fetch_offer_url(item["url"])
+        if not err and len(offer) >= 30:
+            pipeline.update(item_id, offer_text=offer[:12000])
+    if len(offer) < 30:
+        raise HTTPException(422, "Texte de l'offre introuvable — ouvre l'offre et colle son texte dans l'onglet Offre.")
+    return item, offer
+
+
+class PipelineCvBody(BaseModel):
+    cv_text: str
+    lang: str = "fr"
+    tone: Optional[str] = "professionnel"
+    my_name: Optional[str] = ""
+    first_name: Optional[str] = ""   # prénom du recruteur (messages)
+
+
+@app.post("/pipeline/{item_id}/analyze")
+def do_pipeline_analyze(item_id: str, body: PipelineCvBody):
+    """Fit + ATS + go/no-go pour UNE offre du pipeline (mêmes briques que /analyze)."""
+    _guard_llm()
+    if len((body.cv_text or "").strip()) < 30:
+        raise HTTPException(422, "CV manquant — upload-le d'abord.")
+    item, offer = _pipeline_offer(item_id)
+    extra, _ = agent.offer_keywords(offer, body.lang)
+    cov = ats.coverage(body.cv_text, ats.extract_keywords(offer, extra=extra))
+    data, err = agent.analyze(body.cv_text, offer, cov, body.lang)
+    if err:
+        raise HTTPException(502, f"Analyse indisponible : {err}")
+    rec, _ = agent.recommend(data, cov, body.lang)
+    memory.record_application(offer, {
+        "fit_score": data.get("fit_score"), "ats_pct": cov.get("pct"),
+        "recommendation": (rec or {}).get("decision"), "missing_keywords": cov.get("missing"),
+    })
+    pipeline.update(item_id, status="analyzed", fit_score=data.get("fit_score"),
+                    ats_pct=cov.get("pct"), decision=(rec or {}).get("decision"))
+    return {"id": item_id, "ats": cov, "analysis": data, "recommendation": rec}
+
+
+@app.post("/pipeline/{item_id}/prepare")
+def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
+    """Dossier de candidature complet pour une offre du pipeline :
+    CV adapté (boucle agentique, md + HTML pro) + lettre + messages d'outreach
+    rendus depuis TES templates. L'agent prépare — TOI tu envoies."""
+    _guard_llm()
+    if len((body.cv_text or "").strip()) < 30:
+        raise HTTPException(422, "CV manquant — upload-le d'abord.")
+    item, offer = _pipeline_offer(item_id)
+
+    result, err = agent.optimize_cv(body.cv_text, offer, body.lang)
+    if err:
+        raise HTTPException(502, f"Génération du CV indisponible : {err}")
+    md = result["cv_markdown"]
+    structured, _ = agent.cv_to_structured(md, body.lang)
+    letter, lerr = agent.cover_letter(body.cv_text, offer, body.lang, body.tone or "professionnel")
+
+    # personnalisation des messages : meilleur projet à mettre en avant selon l'analyse
+    analysis, _ = agent.analyze(body.cv_text, offer, {"pct": result["ats_final"], "matched": [], "missing": []}, body.lang)
+    highlight = ""
+    if analysis and analysis.get("projects_to_highlight"):
+        highlight = str(analysis["projects_to_highlight"][0]).split("—")[0].split(":")[0].strip()[:80]
+    tvars = {
+        "company": item.get("company") or "", "role": item.get("title") or "",
+        "my_name": body.my_name or "", "first_name": body.first_name or "",
+        "highlight": highlight or "mes projets récents", "link": item.get("url") or "",
+    }
+    messages = {k: templates.render(k, tvars) for k in ("linkedin_invite", "linkedin_message", "email")}
+
+    prepared = {
+        "cv_markdown": md,
+        "cv_html": render.cv_html(md, structured, body.lang),
+        "cover_letter": letter or "",
+        "cover_letter_error": lerr or "",
+        "messages": messages,
+        "ats_start": result["ats_start"], "ats_final": result["ats_final"],
+        "unsupported_final": result["unsupported_final"],
+    }
+    pipeline.update(item_id, status="ready", prepared=prepared,
+                    fit_score=(analysis or {}).get("fit_score", item.get("fit_score")),
+                    ats_pct=result["ats_final"])
+    return {"id": item_id, "prepared": prepared}
+
+
+@app.get("/pipeline/{item_id}")
+def do_pipeline_get(item_id: str):
+    item = pipeline.get(item_id)
+    if not item:
+        raise HTTPException(404, "Offre introuvable dans le pipeline")
+    return item
+
+
+# ── Templates de message (éditables) ────────────────────────────────────────
+
+@app.get("/templates")
+def do_templates_get():
+    return templates.get_all()
+
+
+class TemplatesBody(BaseModel):
+    templates: dict
+
+
+@app.put("/templates")
+def do_templates_put(body: TemplatesBody):
+    return templates.save(body.templates or {})
+
+
+# ── Outreach lemlist (envoi sûr, déclenché par l'utilisateur) ───────────────
+
+@app.get("/outreach/status")
+def do_outreach_status():
+    if not outreach.is_enabled():
+        return {"enabled": False, "campaigns": []}
+    camps, err = outreach.campaigns()
+    return {"enabled": True, "campaigns": camps or [], "error": err}
+
+
+class OutreachBody(BaseModel):
+    item_id: str
+    campaign_id: str
+    email: str
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
+    linkedin_url: Optional[str] = ""
+    template: str = "linkedin_message"
+
+
+@app.post("/outreach/send")
+def do_outreach_send(body: OutreachBody):
+    """Pousse UN recruteur + le message préparé dans une campagne lemlist.
+    Action unitaire déclenchée par l'utilisateur — l'envoi effectif (throttlé)
+    est géré par lemlist selon la campagne configurée."""
+    if not outreach.is_enabled():
+        raise HTTPException(503, "LEMLIST_API_KEY manquante — ajoute-la dans backend/.env")
+    item = pipeline.get(body.item_id)
+    if not item:
+        raise HTTPException(404, "Offre introuvable dans le pipeline")
+    message = ((item.get("prepared") or {}).get("messages") or {}).get(body.template, "")
+    if not message:
+        raise HTTPException(422, "Prépare d'abord le dossier de cette offre (bouton Préparer).")
+    res, err = outreach.add_lead(body.campaign_id, body.email, {
+        "first_name": body.first_name, "last_name": body.last_name,
+        "company": item.get("company") or "", "linkedin_url": body.linkedin_url,
+        "message": message,
+    })
+    if err:
+        raise HTTPException(502, f"Envoi lemlist impossible : {err}")
+    pipeline.update(body.item_id, status="sent")
+    return {"ok": True, "lead": res, "id": body.item_id}
