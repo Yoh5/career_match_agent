@@ -8,16 +8,16 @@ Endpoints :
   POST /prepare       → agent autonome (ReAct) : prépare toute la candidature
   GET  /memory        → profil agrégé + écarts récurrents (mémoire long terme)
 
-Pipeline de stages (sourcing → dossier prêt → envoi human-in-the-loop) :
-  POST /source                  → cherche des offres (APIs publiques ATS) → pipeline
+Pipeline de stages (sourcing → dossier prêt → candidature revue puis envoyée par TOI) :
+  GET  /sources                 → catalogue des sources que l'agent propose (cochables)
+  POST /source                  → cherche + CLASSE les offres selon ta recherche et ton CV
   GET  /pipeline                → file d'offres (+ ?status=)
   POST /pipeline/{id}/analyze   → fit + ATS + go/no-go sur une offre du pipeline
   POST /pipeline/{id}/prepare   → dossier complet : CV adapté (md+HTML) + lettre + messages
   POST /pipeline/{id}/status    → marquer sent / skipped / …
-  GET|PUT /templates            → templates de message d'outreach (éditables)
-  GET  /outreach/status         → lemlist configuré ? campagnes ?
-  POST /outreach/send           → pousse le recruteur + message dans une campagne lemlist
-                                  (déclenché par un clic utilisateur — jamais en masse)
+  GET  /pipeline/{id}/letter.docx  → lettre en Word
+  GET  /pipeline/{id}/cv.pdf       → CV adapté en PDF (2 colonnes)
+  GET|PUT /templates            → templates de message + prompt de la lettre (éditables)
 
 Tout est AGNOSTIQUE AU MÉTIER (les mots-clés ATS sont extraits de l'offre par le LLM).
 L'agent ne soumet JAMAIS une candidature lui-même : il prépare, tu envoies.
@@ -27,7 +27,7 @@ import os
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 from typing import Optional
 
@@ -45,7 +45,7 @@ try:
 except ImportError:
     pass
 
-from core import llm, ats, extract, agent, memory, orchestrator, render, sources, pipeline, templates, outreach
+from core import llm, ats, extract, agent, memory, orchestrator, render, sources, pipeline, templates, export
 
 app = FastAPI(title="Career Match Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -86,6 +86,7 @@ class OfferBody(BaseModel):
     offer_url: Optional[str] = ""
     lang: str = "fr"
     tone: Optional[str] = "professionnel"
+    letter_style: Optional[str] = ""   # consignes libres sur la FORME de la lettre
 
 
 def _resolve(body: OfferBody):
@@ -154,7 +155,8 @@ def do_prepare(body: OfferBody):
 def do_cover_letter(body: OfferBody):
     _guard_llm()
     cv, offer = _resolve(body)
-    text, err = agent.cover_letter(cv, offer, body.lang, body.tone or "professionnel")
+    style = (body.letter_style or "").strip() or templates.get_all().get("letter_prompt", "")
+    text, err = agent.cover_letter(cv, offer, body.lang, body.tone or "professionnel", style_notes=style)
     if err:
         raise HTTPException(502, f"Génération indisponible : {err}")
     return {"cover_letter": text}
@@ -183,23 +185,45 @@ def do_tailored_cv(body: OfferBody):
 
 # ═══ Pipeline de stages : sourcing → analyse → dossier prêt → envoi (à toi) ═══
 
+@app.get("/sources")
+def do_sources():
+    """Catalogue des sources dont l'agent dispose — l'UI les propose en cases à
+    cocher (tout, une seule, plusieurs…) ; l'utilisateur peut aussi ajouter les siennes."""
+    return {"catalog": sources.catalog()}
+
+
 class SourceBody(BaseModel):
     keywords: list[str] = []
     location: list[str] = []
+    target_description: str = ""    # description libre du stage recherché (matching)
+    cv_text: str = ""               # CV (matching fit candidat, optionnel)
     internship_only: bool = True
     greenhouse: list[str] = []      # slugs de boards Greenhouse
     lever: list[str] = []           # slugs d'entreprises Lever
     ashby: list[str] = []           # slugs d'orgs Ashby
     remoteok: bool = False
+    jobicy: str = ""                # géo Jobicy ("france", "emea"…) — vide = désactivé
+    arbeitnow: bool = False
+    rss: list[str] = []             # flux RSS personnalisés (Novojob, écoles…)
+    lang: str = "fr"
     limit: int = 40
 
 
 @app.post("/source")
 def do_source(body: SourceBody):
-    """Cherche des offres de stage via les APIs PUBLIQUES d'ATS et alimente le pipeline."""
-    if not (body.greenhouse or body.lever or body.ashby or body.remoteok):
-        raise HTTPException(422, "Indique au moins une source : boards Greenhouse/Lever/Ashby ou RemoteOK.")
+    """Cherche des offres via les sources choisies, puis les CLASSE par pertinence
+    (description du stage recherché + fit avec le CV) avant d'alimenter le pipeline."""
+    if not (body.greenhouse or body.lever or body.ashby or body.remoteok
+            or body.jobicy or body.arbeitnow or body.rss):
+        raise HTTPException(422, "Choisis au moins une source (catalogue ou slugs/flux personnalisés).")
     offers, errors = sources.search(body.model_dump())
+    # Classement : mots-clés de la recherche (description cible enrichie par le LLM
+    # si dispo — fail-open) + part des mots-clés de chaque offre déjà dans le CV.
+    target = " ".join([body.target_description or ""] + (body.keywords or [])).strip()
+    extra = []
+    if body.target_description.strip():
+        extra, _ = agent.offer_keywords(body.target_description, body.lang)
+    offers = sources.rank_offers(offers, target, body.cv_text, extra_keywords=extra)
     added = pipeline.add_offers(offers)
     return {"found": len(offers), "added": added, "errors": errors,
             "stats": pipeline.stats(), "items": pipeline.list_items()}
@@ -247,6 +271,7 @@ class PipelineCvBody(BaseModel):
     tone: Optional[str] = "professionnel"
     my_name: Optional[str] = ""
     first_name: Optional[str] = ""   # prénom du recruteur (messages)
+    letter_style: Optional[str] = "" # consignes de style pour la lettre (sinon template 'letter_prompt')
 
 
 @app.post("/pipeline/{item_id}/analyze")
@@ -286,7 +311,10 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
         raise HTTPException(502, f"Génération du CV indisponible : {err}")
     md = result["cv_markdown"]
     structured, _ = agent.cv_to_structured(md, body.lang)
-    letter, lerr = agent.cover_letter(body.cv_text, offer, body.lang, body.tone or "professionnel")
+    # consignes de style de la lettre : requête > template 'letter_prompt' sauvegardé
+    style = (body.letter_style or "").strip() or templates.get_all().get("letter_prompt", "")
+    letter, lerr = agent.cover_letter(body.cv_text, offer, body.lang,
+                                      body.tone or "professionnel", style_notes=style)
 
     # personnalisation des messages : meilleur projet à mettre en avant selon l'analyse
     analysis, _ = agent.analyze(body.cv_text, offer, {"pct": result["ats_final"], "matched": [], "missing": []}, body.lang)
@@ -303,6 +331,8 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
     prepared = {
         "cv_markdown": md,
         "cv_html": render.cv_html(md, structured, body.lang),
+        "cv_structured": structured,            # pour l'export PDF sans rappel LLM
+        "lang": body.lang,
         "cover_letter": letter or "",
         "cover_letter_error": lerr or "",
         "messages": messages,
@@ -339,45 +369,40 @@ def do_templates_put(body: TemplatesBody):
     return templates.save(body.templates or {})
 
 
-# ── Outreach lemlist (envoi sûr, déclenché par l'utilisateur) ───────────────
+# ── Exports bureautiques : lettre en Word, CV en PDF ────────────────────────
 
-@app.get("/outreach/status")
-def do_outreach_status():
-    if not outreach.is_enabled():
-        return {"enabled": False, "campaigns": []}
-    camps, err = outreach.campaigns()
-    return {"enabled": True, "campaigns": camps or [], "error": err}
-
-
-class OutreachBody(BaseModel):
-    item_id: str
-    campaign_id: str
-    email: str
-    first_name: Optional[str] = ""
-    last_name: Optional[str] = ""
-    linkedin_url: Optional[str] = ""
-    template: str = "linkedin_message"
-
-
-@app.post("/outreach/send")
-def do_outreach_send(body: OutreachBody):
-    """Pousse UN recruteur + le message préparé dans une campagne lemlist.
-    Action unitaire déclenchée par l'utilisateur — l'envoi effectif (throttlé)
-    est géré par lemlist selon la campagne configurée."""
-    if not outreach.is_enabled():
-        raise HTTPException(503, "LEMLIST_API_KEY manquante — ajoute-la dans backend/.env")
-    item = pipeline.get(body.item_id)
+def _prepared_or_422(item_id: str) -> dict:
+    item = pipeline.get(item_id)
     if not item:
         raise HTTPException(404, "Offre introuvable dans le pipeline")
-    message = ((item.get("prepared") or {}).get("messages") or {}).get(body.template, "")
-    if not message:
+    prepared = item.get("prepared") or {}
+    if not prepared:
         raise HTTPException(422, "Prépare d'abord le dossier de cette offre (bouton Préparer).")
-    res, err = outreach.add_lead(body.campaign_id, body.email, {
-        "first_name": body.first_name, "last_name": body.last_name,
-        "company": item.get("company") or "", "linkedin_url": body.linkedin_url,
-        "message": message,
-    })
-    if err:
-        raise HTTPException(502, f"Envoi lemlist impossible : {err}")
-    pipeline.update(body.item_id, status="sent")
-    return {"ok": True, "lead": res, "id": body.item_id}
+    return {"item": item, "prepared": prepared}
+
+
+@app.get("/pipeline/{item_id}/letter.docx")
+def do_letter_docx(item_id: str):
+    d = _prepared_or_422(item_id)
+    letter = d["prepared"].get("cover_letter") or ""
+    if not letter.strip():
+        raise HTTPException(422, "Pas de lettre dans ce dossier.")
+    data = export.letter_docx(letter)
+    name = f"Lettre_{(d['item'].get('company') or 'offre').replace(' ', '_')}.docx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@app.get("/pipeline/{item_id}/cv.pdf")
+def do_cv_pdf(item_id: str):
+    d = _prepared_or_422(item_id)
+    p = d["prepared"]
+    if not (p.get("cv_markdown") or "").strip():
+        raise HTTPException(422, "Pas de CV adapté dans ce dossier.")
+    data = export.cv_pdf(p.get("cv_structured"), p.get("cv_markdown") or "", p.get("lang") or "fr")
+    name = f"CV_{(d['item'].get('company') or 'offre').replace(' ', '_')}.pdf"
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})

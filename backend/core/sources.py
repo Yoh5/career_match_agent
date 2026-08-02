@@ -21,6 +21,38 @@ STAGE_TERMS = (
 
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$", re.IGNORECASE)
 
+# Catalogue des sources QUE L'AGENT PROPOSE (boards publics vérifiés — l'utilisateur
+# coche tout, une seule, ou plusieurs ; il peut aussi ajouter ses propres slugs).
+CATALOG = [
+    {"kind": "greenhouse", "slug": "doctolib",   "name": "Doctolib",   "note": "santé/tech, Paris — publie beaucoup de stages"},
+    {"kind": "greenhouse", "slug": "datadog",    "name": "Datadog",    "note": "cloud/observabilité, Paris/international"},
+    {"kind": "greenhouse", "slug": "gitlab",     "name": "GitLab",     "note": "dev tools, full remote"},
+    {"kind": "greenhouse", "slug": "stripe",     "name": "Stripe",     "note": "fintech, international"},
+    {"kind": "greenhouse", "slug": "duolingo",   "name": "Duolingo",   "note": "edtech/IA"},
+    {"kind": "greenhouse", "slug": "cloudflare", "name": "Cloudflare", "note": "infra/réseau, international"},
+    {"kind": "greenhouse", "slug": "dataiku",    "name": "Dataiku",    "note": "IA/data, Paris"},
+    {"kind": "greenhouse", "slug": "mirakl",     "name": "Mirakl",     "note": "marketplace SaaS, Paris"},
+    {"kind": "lever",      "slug": "swile",      "name": "Swile",      "note": "fintech RH, France"},
+    {"kind": "lever",      "slug": "aircall",    "name": "Aircall",    "note": "SaaS télécom, Paris"},
+    {"kind": "lever",      "slug": "ledger",     "name": "Ledger",     "note": "crypto/hardware, Paris"},
+    {"kind": "lever",      "slug": "qonto",      "name": "Qonto",      "note": "néobanque pro, Paris"},
+    {"kind": "ashby",      "slug": "linear",     "name": "Linear",     "note": "dev tools, remote"},
+    {"kind": "ashby",      "slug": "ramp",       "name": "Ramp",       "note": "fintech, US/remote"},
+    {"kind": "ashby",      "slug": "pennylane",  "name": "Pennylane",  "note": "fintech compta, Paris"},
+    {"kind": "ashby",      "slug": "deel",       "name": "Deel",       "note": "RH global, remote"},
+    {"kind": "ashby",      "slug": "sorare",     "name": "Sorare",     "note": "gaming/web3, Paris"},
+    {"kind": "remoteok",   "slug": "remoteok",   "name": "RemoteOK",   "note": "agrégateur 100% remote (accessible depuis le Maroc)"},
+    {"kind": "jobicy",     "slug": "france",     "name": "Jobicy (géo France)", "note": "agrégateur remote, filtre France/EMEA"},
+    {"kind": "arbeitnow",  "slug": "arbeitnow",  "name": "Arbeitnow",  "note": "agrégateur Europe (dont France)"},
+    {"kind": "rss",        "slug": "https://www.novojob.com/rss", "name": "Novojob (Afrique/Maghreb)",
+     "note": "job board Afrique dont Maroc — flux parfois lent/indisponible"},
+]
+
+
+def catalog() -> List[Dict]:
+    """Sources disponibles côté agent (l'UI les propose en cases à cocher)."""
+    return CATALOG
+
 
 def _get_json(url: str, timeout: int = 20):
     """GET → (json, err). Isolé pour être monkeypatché dans les tests."""
@@ -104,6 +136,87 @@ def ashby_jobs(org: str) -> Tuple[List[Dict], str]:
     return jobs, ""
 
 
+def jobicy_jobs(geo: str = "") -> Tuple[List[Dict], str]:
+    """Agrégateur remote Jobicy — API publique documentée (geo : france, emea…)."""
+    url = "https://jobicy.com/api/v2/remote-jobs?count=50"
+    if _valid_slug(geo):
+        url += f"&geo={geo.strip().lower()}"
+    data, err = _get_json(url)
+    if err:
+        return [], f"jobicy — {err}"
+    jobs = []
+    for j in (data or {}).get("jobs", []):
+        jobs.append({
+            "source": "jobicy", "company": (j.get("companyName") or "").strip(),
+            "title": (j.get("jobTitle") or "").strip(),
+            "url": j.get("url") or "",
+            "location": (j.get("jobGeo") or "Remote").strip(),
+            "description": _strip_html((j.get("jobExcerpt") or "") + " " + (j.get("jobLevel") or ""))[:6000],
+        })
+    return jobs, ""
+
+
+def arbeitnow_jobs() -> Tuple[List[Dict], str]:
+    """Agrégateur Europe Arbeitnow — API publique (France incluse)."""
+    data, err = _get_json("https://www.arbeitnow.com/api/job-board-api")
+    if err:
+        return [], f"arbeitnow — {err}"
+    jobs = []
+    for j in (data or {}).get("data", []):
+        jobs.append({
+            "source": "arbeitnow", "company": (j.get("company_name") or "").strip(),
+            "title": (j.get("title") or "").strip(),
+            "url": j.get("url") or "",
+            "location": (j.get("location") or ("Remote" if j.get("remote") else "")).strip(),
+            "description": _strip_html((j.get("description") or "") + " " + " ".join(j.get("job_types") or []))[:6000],
+        })
+    return jobs, ""
+
+
+def _get_text(url: str, timeout: int = 20):
+    """GET texte brut (flux RSS). Isolé pour être monkeypatché dans les tests."""
+    try:
+        import httpx
+        with httpx.Client(timeout=timeout, follow_redirects=True,
+                          headers={"User-Agent": "Mozilla/5.0 (CareerMatchAgent)"}) as client:
+            r = client.get(url)
+        if r.status_code != 200:
+            return None, f"HTTP {r.status_code}"
+        return r.text, None
+    except Exception as e:
+        return None, str(e)
+
+
+def rss_jobs(feed_url: str) -> Tuple[List[Dict], str]:
+    """Connecteur RSS générique — branche n'importe quel flux d'offres (Novojob
+    Afrique/Maghreb, boards d'écoles, HelloWork…). Parse tolérant (CDATA ok)."""
+    u = (feed_url or "").strip()
+    if not re.match(r"^https?://", u, re.IGNORECASE):
+        return [], f"URL de flux RSS invalide : {feed_url!r}"
+    text, err = _get_text(u)
+    if err:
+        return [], f"rss:{u} — {err}"
+    host = re.sub(r"^www\.", "", re.sub(r"^https?://", "", u).split("/")[0])
+
+    def _tag(block, name):
+        m = re.search(rf"<{name}[^>]*>(?:\s*<!\[CDATA\[)?(.*?)(?:\]\]>\s*)?</{name}>", block, re.S | re.I)
+        return (m.group(1).strip() if m else "")
+
+    jobs = []
+    for item in re.findall(r"<item[ >](.*?)</item>", text or "", re.S | re.I):
+        title = _strip_html(_tag(item, "title"))
+        link = _tag(item, "link")
+        if not title or not link.startswith("http"):
+            continue
+        jobs.append({
+            "source": f"rss:{host}", "company": host,
+            "title": title, "url": link,
+            "location": _strip_html(_tag(item, "category")),
+            "description": _strip_html(_tag(item, "description"))[:6000],
+        })
+    return jobs, ""
+
+
 def remoteok_jobs() -> Tuple[List[Dict], str]:
     data, err = _get_json("https://remoteok.com/api")
     if err:
@@ -166,6 +279,32 @@ def matches(job: Dict, keywords: List[str], location_terms: List[str]) -> bool:
     return True
 
 
+def rank_offers(offers: List[Dict], target_text: str = "", cv_text: str = "",
+                extra_keywords: List[str] = None) -> List[Dict]:
+    """Classe les offres par pertinence — déterministe, sans réseau.
+
+    match_pct = mélange de :
+      - couverture des mots-clés de la RECHERCHE (description du stage voulu
+        + mots-clés, enrichis par le LLM via `extra_keywords` si dispo) dans l'offre ;
+      - part des mots-clés de L'OFFRE que le CV possède déjà (fit candidat).
+    Ajoute `match_pct` à chaque offre et trie par pertinence décroissante.
+    """
+    from core import ats
+    target_kw = ats.extract_keywords(target_text or "", extra=extra_keywords) if (target_text or extra_keywords) else []
+    for o in offers or []:
+        hay = " ".join([o.get("title") or "", o.get("description") or ""])
+        parts = []
+        if target_kw:
+            parts.append(ats.coverage(hay, target_kw)["pct"])
+        if cv_text and len(cv_text.strip()) >= 30:
+            offer_kw = ats.extract_keywords(hay)
+            if offer_kw:
+                parts.append(ats.coverage(cv_text, offer_kw)["pct"])
+        o["match_pct"] = round(sum(parts) / len(parts)) if parts else None
+    return sorted(offers or [], key=lambda o: (o.get("match_pct") is not None, o.get("match_pct") or 0),
+                  reverse=True)
+
+
 def search(profile: Dict) -> Tuple[List[Dict], List[str]]:
     """Recherche agrégée selon un profil cible. Retourne (offres, erreurs_par_source).
 
@@ -201,6 +340,22 @@ def search(profile: Dict) -> Tuple[List[Dict], List[str]]:
             errors.append(err)
     if profile.get("remoteok"):
         jobs, err = remoteok_jobs()
+        offers += jobs
+        if err:
+            errors.append(err)
+    if profile.get("jobicy"):
+        geo = profile["jobicy"] if isinstance(profile["jobicy"], str) else ""
+        jobs, err = jobicy_jobs(geo)
+        offers += jobs
+        if err:
+            errors.append(err)
+    if profile.get("arbeitnow"):
+        jobs, err = arbeitnow_jobs()
+        offers += jobs
+        if err:
+            errors.append(err)
+    for feed in (profile.get("rss") or []):
+        jobs, err = rss_jobs(str(feed))
         offers += jobs
         if err:
             errors.append(err)

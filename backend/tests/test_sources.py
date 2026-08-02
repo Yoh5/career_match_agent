@@ -115,3 +115,55 @@ def test_search_respects_limit_and_keywords(monkeypatch):
     monkeypatch.setattr(sources, "_get_json", _fake_get({"greenhouse.io": _GH}))
     offers, _ = sources.search({"greenhouse": ["acme"], "keywords": ["data"], "limit": 1})
     assert len(offers) == 1 and "Data" in offers[0]["title"]
+
+
+def test_catalog_has_french_and_moroccan_reach():
+    kinds = {c["kind"] for c in sources.catalog()}
+    assert {"greenhouse", "lever", "ashby", "remoteok", "jobicy", "arbeitnow", "rss"} <= kinds
+    names = " ".join(c["name"] + c.get("note", "") for c in sources.catalog()).lower()
+    assert "maroc" in names or "maghreb" in names          # portée franco-marocaine
+
+
+def test_jobicy_and_arbeitnow_normalize(monkeypatch):
+    payloads = {
+        "jobicy.com": {"jobs": [{"jobTitle": "AI Intern", "companyName": "Acme",
+                                 "url": "https://jb.io/1", "jobGeo": "France", "jobExcerpt": "internship"}]},
+        "arbeitnow.com": {"data": [{"title": "Stage Data", "company_name": "Bee",
+                                    "url": "https://an.io/1", "location": "Paris", "remote": False,
+                                    "description": "<p>stage de 6 mois</p>", "job_types": []}]},
+    }
+    monkeypatch.setattr(sources, "_get_json", _fake_get(payloads))
+    jb, err1 = sources.jobicy_jobs("france")
+    an, err2 = sources.arbeitnow_jobs()
+    assert err1 == "" and jb[0]["company"] == "Acme" and jb[0]["location"] == "France"
+    assert err2 == "" and an[0]["title"] == "Stage Data" and "<" not in an[0]["description"]
+
+
+def test_rss_generic_connector(monkeypatch):
+    feed = """<?xml version="1.0"?><rss><channel>
+      <item><title><![CDATA[Stage Marketing Digital - Casablanca]]></title>
+        <link>https://jobs.example.ma/o/1</link>
+        <description><![CDATA[<b>Stage</b> 6 mois au Maroc]]></description>
+        <category>Casablanca</category></item>
+      <item><title>Sans lien</title><link>pas-une-url</link></item>
+    </channel></rss>"""
+    monkeypatch.setattr(sources, "_get_text", lambda url, timeout=20: (feed, None))
+    jobs, err = sources.rss_jobs("https://jobs.example.ma/rss")
+    assert err == "" and len(jobs) == 1
+    j = jobs[0]
+    assert j["title"].startswith("Stage Marketing") and j["location"] == "Casablanca"
+    assert "<" not in j["description"] and j["source"] == "rss:jobs.example.ma"
+    assert sources.rss_jobs("ftp://x")[0] == []            # URL invalide refusée
+
+
+def test_rank_offers_orders_by_relevance():
+    offers = [
+        {"title": "Stage compta", "description": "comptabilité, audit", "url": "u1"},
+        {"title": "Stage IA", "description": "python machine learning fastapi llm", "url": "u2"},
+    ]
+    cv = "Python, FastAPI, machine learning, agents LLM. " * 3
+    ranked = sources.rank_offers(offers, target_text="stage python machine learning llm", cv_text=cv)
+    assert ranked[0]["url"] == "u2" and ranked[0]["match_pct"] > ranked[1]["match_pct"]
+    # sans cible ni CV → pas de score, ordre conservé
+    plain = sources.rank_offers([{"title": "x", "description": "", "url": "u"}])
+    assert plain[0]["match_pct"] is None

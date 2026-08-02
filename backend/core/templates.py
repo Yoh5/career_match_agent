@@ -61,8 +61,9 @@ def get_all() -> Dict[str, str]:
 
 
 def save(templates: Dict[str, str]) -> Dict[str, str]:
-    """Sauvegarde les templates fournis (str non vides uniquement). Retourne l'état courant."""
-    clean = {k: v for k, v in (templates or {}).items() if isinstance(v, str) and v.strip()}
+    """Sauvegarde les templates fournis. Une valeur VIDE supprime la personnalisation
+    (retour au défaut) ; les non-str sont ignorés. Retourne l'état courant."""
+    entries = {k: v for k, v in (templates or {}).items() if isinstance(v, str)}
     try:
         p = _path()
         d = os.path.dirname(p) or "."
@@ -75,7 +76,11 @@ def save(templates: Dict[str, str]) -> Dict[str, str]:
             current = {}
         if not isinstance(current, dict):
             current = {}
-        current.update(clean)
+        for k, v in entries.items():
+            if v.strip():
+                current[k] = v
+            else:
+                current.pop(k, None)   # vide → retour au défaut
         fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(current, f, ensure_ascii=False, indent=2)

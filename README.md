@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 90 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 97 unit tests (no network, no API key)
 
 ---
 
@@ -32,14 +32,15 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 🔁 **Agentic optimisation loop** | The tailored CV isn't a one-shot: the agent **generates → measures ATS coverage (deterministic) → verifies integrity → revises**, keeping the best version. A real goal-directed loop with a measurable objective. |
 | 🤖 **Autonomous agent (tool-calling)** | `/prepare` runs a **ReAct loop**: the LLM *chooses* which tools to call (measure ATS, analyse, recall memory, recommend, write CV/letter) and in what order — every step is traced. |
 | 🧠 **Long-term memory** | Remembers offers already analysed and **recurring gaps** across offers ("you're often missing X") to sharpen future advice. |
-| 🔎 **Internship sourcing** | Searches **public ATS job-board APIs** (Greenhouse, Lever, Ashby, RemoteOK) for internships matching your keywords/location (FR/EN location aliases: *Maroc ↔ Morocco ↔ Casablanca…*), and feeds a persistent **application pipeline**. |
-| 🗂️ **Application pipeline** | Each offer moves through `sourced → analyzed → ready → sent/skipped`. One click per offer: analyse fit, or build the **full application kit** (tailored CV md+HTML, cover letter, outreach messages). |
-| ✍️ **Your message templates** | LinkedIn invite (≤300 chars), LinkedIn message and application e-mail are rendered from **your editable templates** (`{company} {role} {highlight} {first_name}…`), personalised per offer with the best project to highlight. |
-| 📤 **Safe outreach via lemlist** *(optional)* | With a `LEMLIST_API_KEY`, one click pushes the recruiter + personalised message into a **lemlist campaign** — lemlist handles the LinkedIn/e-mail sending with safe throttling. No key → copy-paste mode. |
+| 🔎 **Internship sourcing** | Describe the internship you want (free text) + keywords/location → the agent searches the sources **you pick from its catalog** (verified public ATS boards incl. French companies, RemoteOK, Jobicy-France, Arbeitnow-EU, any custom **RSS feed** — e.g. Novojob for Morocco/Africa) with FR/EN location aliases (*Maroc ↔ Morocco ↔ Casablanca…*). |
+| 🏆 **Relevance ranking** | Every sourced offer gets a deterministic **match %** — coverage of *your target description's* keywords in the offer, blended with how much of the offer's keywords your CV already has. Best matches first. |
+| 🗂️ **Application pipeline** | Each offer moves through `sourced → analyzed → ready → applied/skipped`. Per offer — or **top-5 in one click** — the agent builds the **full application kit**: tailored CV (**PDF, designed 2-column**), cover letter (**Word .docx**), outreach messages. |
+| ✍️ **Your templates + letter prompt** | LinkedIn invite (≤300 chars), message and e-mail from **your editable templates**; plus a free-text **letter prompt** ("punchy opening, 3 short paragraphs, highlight my AI projects…") that shapes how every cover letter is written. |
+| 🚀 **Reviewed apply flow** | Before applying to any offer the agent **shows you the CV and the letter**; you confirm → it opens the offer page and marks it applied. **It never submits for you.** |
 
 ## 🛡️ Why it never auto-applies (by design)
 
-Auto-submitting on LinkedIn/Indeed violates their ToS, gets real accounts banned, and dies on CAPTCHAs. Like the best tools in this space, this agent is **a filter and a builder, not a spray-and-pray auto-applier**: it sources from job boards companies *voluntarily* expose as public JSON APIs, evaluates, and prepares everything — **you always make the final send**. The only automated channel is **lemlist** (optional), a dedicated outreach platform that sends LinkedIn invites/messages and e-mails under its own safe rate limits, triggered one recruiter at a time by *your* click.
+Auto-submitting on LinkedIn/Indeed violates their ToS, gets real accounts banned, and dies on CAPTCHAs. Like the best tools in this space (career-ops: *"it never submits, sends, or clicks anything"*), this agent is **a filter and a builder, not a spray-and-pray auto-applier**: it sources from job boards companies *voluntarily* expose as public JSON APIs (plus any RSS feed you add), ranks, and prepares everything — then **shows you each CV + letter for review before you make the final send** on the offer's own page.
 
 ## 🔁 The agentic loop (tailored CV)
 
@@ -96,7 +97,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 90 tests, no network / no API key
+python -m pytest tests/ -q                          # 97 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -109,12 +110,13 @@ python -m pytest tests/ -q                          # 90 tests, no network / no 
 | `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, iterations, unsupported_final}` |
 | `POST /prepare` | `{cv_text, offer_text\|offer_url, lang}` | `{steps[], analysis, ats, recommendation, cover_letter, tailored_cv, summary}` (autonomous agent) |
 | `GET /memory` | — | `{count, avg_fit, recurring_gaps[]}` |
-| `POST /source` | `{keywords[], location[], greenhouse[], lever[], ashby[], remoteok, internship_only}` | sourced offers → pipeline |
-| `GET /pipeline` | `?status=` | `{stats, items[]}` |
+| `GET /sources` | — | catalog of sources the agent proposes (pick all / some) |
+| `POST /source` | `{target_description, cv_text, keywords[], location[], greenhouse[], lever[], ashby[], remoteok, jobicy, arbeitnow, rss[], internship_only}` | offers **ranked by match %** → pipeline |
+| `GET /pipeline` | `?status=` | `{stats, items[]}` (best matches first) |
 | `POST /pipeline/{id}/analyze` | `{cv_text, lang}` | fit + ATS + go/no-go for that offer |
-| `POST /pipeline/{id}/prepare` | `{cv_text, lang, tone, my_name, first_name}` | full kit: CV md+HTML, letter, outreach messages |
-| `GET \| PUT /templates` | `{templates}` | your editable outreach message templates |
-| `GET /outreach/status` · `POST /outreach/send` | `{item_id, campaign_id, email, …}` | push recruiter + message to a lemlist campaign |
+| `POST /pipeline/{id}/prepare` | `{cv_text, lang, tone, my_name, first_name, letter_style}` | full kit: CV md+HTML, letter, outreach messages |
+| `GET /pipeline/{id}/letter.docx` · `GET /pipeline/{id}/cv.pdf` | — | cover letter as **Word**, tailored CV as **designed PDF** |
+| `GET \| PUT /templates` | `{templates}` | message templates + the cover-letter **prompt** |
 
 ## 🗂️ Layout
 
@@ -130,12 +132,13 @@ backend/
     memory.py       long-term memory: offers seen + recurring gaps (fail-open)
     orchestrator.py ReAct agent — LLM chooses tools until the application is ready
     render.py       CV → designed HTML (2-col template from structured JSON) + Markdown fallback
-    sources.py      internship sourcing via public ATS APIs (Greenhouse/Lever/Ashby/RemoteOK)
-    pipeline.py     persistent application queue: sourced → analyzed → ready → sent/skipped
-    templates.py    your editable outreach message templates (tolerant rendering)
-    outreach.py     lemlist client — safe recruiter outreach (fail-open without key)
-  tests/            90 unit tests (agent, ats, memory, orchestrator, render, extract, app,
-                    sources, pipeline, templates, outreach)
+    sources.py      sourcing catalog + connectors (Greenhouse/Lever/Ashby/RemoteOK/Jobicy/
+                    Arbeitnow/any RSS) + deterministic relevance ranking (rank_offers)
+    pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
+    templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
+    export.py       cover letter → Word (.docx) · tailored CV → designed 2-column PDF (fpdf2)
+  tests/            97 unit tests (agent, ats, memory, orchestrator, render, extract, app,
+                    sources, pipeline, templates, export)
 frontend/index.html  single-page UI (light/dark)
 ```
 

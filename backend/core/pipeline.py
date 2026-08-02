@@ -78,6 +78,7 @@ def add_offers(offers: List[Dict]) -> int:
             "url": url,
             "location": o.get("location") or "",
             "offer_text": (o.get("description") or o.get("offer_text") or "")[:12000],
+            "match_pct": o.get("match_pct"),
             "fit_score": None, "ats_pct": None, "decision": None,
             "prepared": {},
             "created": now, "updated": now,
@@ -100,7 +101,10 @@ def list_items(status: Optional[str] = None) -> List[Dict]:
     if status:
         items = [it for it in items if it.get("status") == status]
     out = []
-    for it in sorted(items, key=lambda x: x.get("updated", 0), reverse=True):
+    # tri : meilleures correspondances d'abord, puis plus récentes
+    for it in sorted(items, key=lambda x: (x.get("match_pct") is not None,
+                                           x.get("match_pct") or 0,
+                                           x.get("updated", 0)), reverse=True):
         lite = {k: v for k, v in it.items() if k not in ("offer_text", "prepared")}
         lite["has_offer_text"] = bool((it.get("offer_text") or "").strip())
         lite["prepared_keys"] = sorted((it.get("prepared") or {}).keys())

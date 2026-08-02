@@ -19,7 +19,6 @@ def _isolate(monkeypatch, tmp_path):
     monkeypatch.setenv("CAREER_PIPELINE_PATH", str(tmp_path / "pipe.json"))
     monkeypatch.setenv("CAREER_TEMPLATES_PATH", str(tmp_path / "tpl.json"))
     monkeypatch.setenv("CAREER_MEMORY_PATH", str(tmp_path / "mem.json"))
-    monkeypatch.delenv("LEMLIST_API_KEY", raising=False)
 
 
 def _seed_offer(monkeypatch):
@@ -69,17 +68,27 @@ def test_pipeline_analyze(monkeypatch):
     assert it["status"] == "analyzed" and it["fit_score"] == 78 and it["decision"] == "postuler"
 
 
-def test_pipeline_prepare_builds_full_dossier(monkeypatch):
-    oid = _seed_offer(monkeypatch)
+def _mock_prepare_llm(monkeypatch, captured=None):
     monkeypatch.setattr(appmod.llm, "is_enabled", lambda: True)
     monkeypatch.setattr(appmod.agent, "optimize_cv",
                         lambda *a, **k: ({"cv_markdown": "# Axel AHO\nPython", "ats_start": 50,
                                           "ats_final": 85, "iterations": [], "unsupported_final": []}, None))
     monkeypatch.setattr(appmod.agent, "cv_to_structured", lambda *a, **k: (None, "off"))
-    monkeypatch.setattr(appmod.agent, "cover_letter", lambda *a, **k: ("Madame, Monsieur…", None))
+
+    def fake_letter(cv, offer, lang="fr", tone="professionnel", style_notes=""):
+        if captured is not None:
+            captured["style_notes"] = style_notes
+        return "Madame, Monsieur…", None
+
+    monkeypatch.setattr(appmod.agent, "cover_letter", fake_letter)
     monkeypatch.setattr(appmod.agent, "analyze",
                         lambda *a, **k: ({"fit_score": 80, "projects_to_highlight":
                                           ["Career Match Agent — agent IA de candidature"]}, None))
+
+
+def test_pipeline_prepare_builds_full_dossier(monkeypatch):
+    oid = _seed_offer(monkeypatch)
+    _mock_prepare_llm(monkeypatch)
     r = client.post(f"/pipeline/{oid}/prepare",
                     json={"cv_text": _CV, "my_name": "Axel AHO", "first_name": "Marie"})
     assert r.status_code == 200
@@ -95,6 +104,19 @@ def test_pipeline_prepare_builds_full_dossier(monkeypatch):
     assert it["status"] == "ready" and it["ats_pct"] == 85
 
 
+def test_prepare_uses_letter_style_from_request_or_saved_prompt(monkeypatch):
+    oid = _seed_offer(monkeypatch)
+    captured = {}
+    _mock_prepare_llm(monkeypatch, captured)
+    # 1) consigne passée dans la requête
+    client.post(f"/pipeline/{oid}/prepare", json={"cv_text": _CV, "letter_style": "accroche percutante"})
+    assert captured["style_notes"] == "accroche percutante"
+    # 2) sinon, prompt sauvegardé dans les templates
+    client.put("/templates", json={"templates": {"letter_prompt": "3 paragraphes max"}})
+    client.post(f"/pipeline/{oid}/prepare", json={"cv_text": _CV})
+    assert captured["style_notes"] == "3 paragraphes max"
+
+
 def test_templates_get_and_put():
     t = client.get("/templates").json()
     assert "linkedin_message" in t
@@ -102,22 +124,39 @@ def test_templates_get_and_put():
     assert r.status_code == 200 and r.json()["linkedin_invite"] == "Yo {first_name} !"
 
 
-def test_outreach_status_disabled():
-    d = client.get("/outreach/status").json()
-    assert d["enabled"] is False
+def test_sources_catalog_endpoint():
+    d = client.get("/sources").json()
+    assert len(d["catalog"]) >= 10
+    assert all({"kind", "slug", "name"} <= set(c) for c in d["catalog"])
 
 
-def test_outreach_send_requires_key_then_prepared(monkeypatch):
+def test_source_ranks_by_target_description(monkeypatch):
+    monkeypatch.setattr(appmod.sources, "search", lambda profile: ([
+        {"source": "greenhouse", "company": "acme", "title": "Stage Comptabilité",
+         "url": "https://x.io/compta", "location": "Paris", "description": "audit fiscalité comptabilité"},
+        {"source": "greenhouse", "company": "acme", "title": "Stage IA Python",
+         "url": "https://x.io/ia", "location": "Casablanca",
+         "description": "python machine learning fastapi llm agents"},
+    ], []))
+    r = client.post("/source", json={"greenhouse": ["acme"],
+                                     "target_description": "stage python machine learning llm",
+                                     "cv_text": _CV})
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items[0]["title"] == "Stage IA Python"           # la plus pertinente d'abord
+    assert items[0]["match_pct"] > (items[1]["match_pct"] or 0)
+
+
+def test_exports_docx_and_pdf(monkeypatch):
     oid = _seed_offer(monkeypatch)
-    body = {"item_id": oid, "campaign_id": "c1", "email": "m@acme.com"}
-    assert client.post("/outreach/send", json=body).status_code == 503       # pas de clé
-    monkeypatch.setenv("LEMLIST_API_KEY", "k")
-    assert client.post("/outreach/send", json=body).status_code == 422       # pas préparé
-    appmod.pipeline.update(oid, prepared={"messages": {"linkedin_message": "Bonjour Marie…"}})
-    sent = {}
-    monkeypatch.setattr(appmod.outreach, "add_lead",
-                        lambda cid, email, fields: (sent.update(cid=cid, email=email, f=fields) or {"ok": 1}, None))
-    r = client.post("/outreach/send", json=body)
-    assert r.status_code == 200 and sent["email"] == "m@acme.com"
-    assert sent["f"]["message"].startswith("Bonjour")
-    assert client.get(f"/pipeline/{oid}").json()["status"] == "sent"
+    # pas encore préparé → 422
+    assert client.get(f"/pipeline/{oid}/letter.docx").status_code == 422
+    assert client.get(f"/pipeline/{oid}/cv.pdf").status_code == 422
+    _mock_prepare_llm(monkeypatch)
+    client.post(f"/pipeline/{oid}/prepare", json={"cv_text": _CV})
+    r = client.get(f"/pipeline/{oid}/letter.docx")
+    assert r.status_code == 200 and r.content[:2] == b"PK"
+    assert "wordprocessingml" in r.headers["content-type"]
+    r = client.get(f"/pipeline/{oid}/cv.pdf")
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    assert "attachment" in r.headers["content-disposition"]
