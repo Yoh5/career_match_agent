@@ -318,9 +318,11 @@
 
   <div class="card hidden" id="outCard">
     <div class="out-head"><h3 id="outTitle">Sortie</h3>
-      <div style="display:flex;gap:9px">
+      <div style="display:flex;gap:9px;flex-wrap:wrap">
         <button class="btn btn-g" id="btnCopy">📋 Copier</button>
-        <button class="btn btn-g" id="btnDownload">⬇️ Télécharger</button>
+        <button class="btn btn-g" id="btnDownload">⬇️ Markdown</button>
+        <button class="btn btn-g hidden" id="btnHtml">⬇️ HTML</button>
+        <button class="btn btn-g hidden" id="btnPrint">🖨️ Imprimer / PDF</button>
       </div>
     </div>
     <div id="outMeta" class="hidden"></div>
@@ -335,6 +337,7 @@
 <script>
 const API = "";                        // même origine (servi par FastAPI)
 let cvText = "";
+let lastCvHtml = "";                    // HTML du dernier CV adapté (pour export/impression)
 const $ = id => document.getElementById(id);
 const setErr = m => $("globalErr").textContent = m || "";
 
@@ -431,6 +434,7 @@ function letterOrCV(path, title, filename, btn, label){
       const d = await post(path, body());
       const text = d.cover_letter ?? d.tailored_cv_markdown ?? "";
       $("outTitle").textContent = title; $("outText").textContent = text;
+      setCvHtml(d.tailored_cv_html || "");
       if (d.ats_final !== undefined && d.ats_final !== null){
         const inv = (d.unsupported_final||[]).length;
         $("outMeta").className = "trace";
@@ -497,10 +501,10 @@ $("btnAgent").onclick = async ()=>{
       const inv=(d.tailored_cv.unsupported_final||[]).length;
       $("outMeta").className="trace";
       $("outMeta").innerHTML="🤖 <span>Boucle agentique :</span> ATS <b>"+d.tailored_cv.ats_start+"% → "+d.tailored_cv.ats_final+"%</b> · "+(inv===0?"<b>0 invention ✓</b>":inv+" à vérifier");
-      $("btnDownload").dataset.file="CV_adapte.md"; $("outCard").classList.remove("hidden");
+      $("btnDownload").dataset.file="CV_adapte.md"; setCvHtml(d.tailored_cv.cv_html||""); $("outCard").classList.remove("hidden");
     } else if(d.cover_letter){
       $("outTitle").textContent="✉️ Lettre de motivation (agent)"; $("outText").textContent=d.cover_letter;
-      $("outMeta").className="hidden"; $("btnDownload").dataset.file="lettre_motivation.txt"; $("outCard").classList.remove("hidden");
+      $("outMeta").className="hidden"; $("btnDownload").dataset.file="lettre_motivation.txt"; setCvHtml(""); $("outCard").classList.remove("hidden");
     }
     markStep("step3", true);
     $("agentCard").scrollIntoView({behavior:"smooth"});
@@ -512,9 +516,28 @@ $("btnCopy").onclick = ()=>{
   navigator.clipboard.writeText($("outText").textContent);
   const b=$("btnCopy"), t=b.innerHTML; b.innerHTML="✓ Copié"; setTimeout(()=>b.innerHTML=t,1400);
 };
-$("btnDownload").onclick = ()=>{
-  const blob = new Blob([$("outText").textContent],{type:"text/plain;charset=utf-8"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=$("btnDownload").dataset.file||"sortie.txt"; a.click();
+$("btnDownload").onclick = ()=>download($("outText").textContent, $("btnDownload").dataset.file||"sortie.txt", "text/plain");
+
+// Export HTML / impression PDF du CV adapté
+function setCvHtml(html){
+  lastCvHtml = html || "";
+  $("btnHtml").classList.toggle("hidden", !lastCvHtml);
+  $("btnPrint").classList.toggle("hidden", !lastCvHtml);
+}
+function download(content, filename, mime){
+  const blob = new Blob([content],{type:mime+";charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1500);
+}
+$("btnHtml").onclick = ()=>{ if(lastCvHtml) download(lastCvHtml, "CV_adapte.html", "text/html"); };
+$("btnPrint").onclick = ()=>{
+  if(!lastCvHtml) return;
+  const f=document.createElement("iframe");
+  f.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0";
+  document.body.appendChild(f);
+  const d=f.contentWindow.document; d.open(); d.write(lastCvHtml); d.close();
+  const go=()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){} setTimeout(()=>f.remove(), 1500); };
+  f.onload=go; setTimeout(go, 400);
 };
 
 function fill(id,arr){ $(id).innerHTML=(arr||[]).map(x=>"<li>"+esc(x)+"</li>").join("") || '<li class="muted">—</li>'; }

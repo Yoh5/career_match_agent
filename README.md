@@ -8,7 +8,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 30 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 49 unit tests (no network, no API key)
 
 ---
 
@@ -20,6 +20,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 📌 **Projects to highlight** | Which of *your* projects to emphasise **for this specific offer**, and why. |
 | ✎ **CV improvement suggestions** | Concrete, actionable edits (wording, missing keywords, ordering, quantification) to raise the score. |
 | 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (single column, standard sections, exact keywords you truly have). |
+| 📄 **Markdown + HTML export** | The tailored CV comes as **Markdown *and* clean printable HTML** (A4, `@page`, selectable text) — one click to **download HTML or print to PDF**. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
@@ -93,7 +94,7 @@ python -m pytest tests/ -q                          # 17 tests, no network / no 
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
 | `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis, recommendation, memory}` |
 | `POST /cover-letter` | `{cv_text, offer_text, lang, tone}` | `{cover_letter}` |
-| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, ats_start, ats_final, iterations, unsupported_final}` |
+| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, iterations, unsupported_final}` |
 | `POST /prepare` | `{cv_text, offer_text\|offer_url, lang}` | `{steps[], analysis, ats, recommendation, cover_letter, tailored_cv, summary}` (autonomous agent) |
 | `GET /memory` | — | `{count, avg_fit, recurring_gaps[]}` |
 
@@ -110,7 +111,8 @@ backend/
                     cover_letter · tailored_cv · verify_grounding · optimize_cv (loop)
     memory.py       long-term memory: offers seen + recurring gaps (fail-open)
     orchestrator.py ReAct agent — LLM chooses tools until the application is ready
-  tests/            30 unit tests
+    render.py       Markdown → clean printable HTML (A4, ATS-friendly), zero-dep
+  tests/            49 unit tests (agent, ats, memory, orchestrator, render, extract, app)
 frontend/index.html  single-page UI (light/dark)
 ```
 

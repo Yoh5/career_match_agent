@@ -25,7 +25,7 @@ try:
 except ImportError:
     pass
 
-from core import llm, ats, extract, agent, memory, orchestrator
+from core import llm, ats, extract, agent, memory, orchestrator, render
 
 app = FastAPI(title="Career Match Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -149,8 +149,10 @@ def do_tailored_cv(body: OfferBody):
     result, err = agent.optimize_cv(cv, offer, body.lang)
     if err:
         raise HTTPException(502, f"Génération indisponible : {err}")
+    md = result["cv_markdown"]
     return {
-        "tailored_cv_markdown": result["cv_markdown"],
+        "tailored_cv_markdown": md,
+        "tailored_cv_html": render.cv_markdown_to_html(md, render.title_from_markdown(md)),
         "ats_start": result["ats_start"],
         "ats_final": result["ats_final"],
         "iterations": result["iterations"],

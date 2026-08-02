@@ -11,7 +11,7 @@ renvoyée proprement. Aucune invention (les outils s'appuient sur le CV réel).
 import json
 from typing import Dict, List, Tuple
 
-from core import agent, ats, extract, llm, memory
+from core import agent, ats, extract, llm, memory, render
 
 # --- Schémas d'outils exposés au LLM (function-calling OpenAI) ---
 TOOLS = [
@@ -141,6 +141,8 @@ def _run_tool(name: str, args: dict, ctx: dict) -> dict:
         res, err = agent.optimize_cv(ctx["cv_text"], ctx["offer_text"], ctx["lang"])
         if err:
             return {"error": err}
+        res["cv_html"] = render.cv_markdown_to_html(res["cv_markdown"],
+                                                    render.title_from_markdown(res["cv_markdown"]))
         out["tailored_cv"] = res
         return {"ats_start": res["ats_start"], "ats_final": res["ats_final"],
                 "unsupported_final": len(res["unsupported_final"])}
