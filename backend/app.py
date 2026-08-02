@@ -150,9 +150,10 @@ def do_tailored_cv(body: OfferBody):
     if err:
         raise HTTPException(502, f"Génération indisponible : {err}")
     md = result["cv_markdown"]
+    structured, _serr = agent.cv_to_structured(md, body.lang)   # JSON pour la mise en page (fail-open)
     return {
         "tailored_cv_markdown": md,
-        "tailored_cv_html": render.cv_markdown_to_html(md, render.title_from_markdown(md)),
+        "tailored_cv_html": render.cv_html(md, structured, body.lang),
         "ats_start": result["ats_start"],
         "ats_final": result["ats_final"],
         "iterations": result["iterations"],

@@ -77,6 +77,18 @@ def test_tailored_cv_returns_html(monkeypatch):
     assert d["ats_final"] == 90
 
 
+def test_tailored_cv_uses_structured_layout(monkeypatch):
+    _enable_llm(monkeypatch)
+    monkeypatch.setattr(appmod.agent, "optimize_cv", lambda *a, **k: (
+        {"cv_markdown": "# Axel AHO", "ats_start": 60, "ats_final": 90,
+         "iterations": [{}], "unsupported_final": []}, None))
+    monkeypatch.setattr(appmod.agent, "cv_to_structured", lambda *a, **k: (
+        {"name": "Axel AHO", "skills": [{"group": "IA", "items": ["LangGraph"]}]}, None))
+    r = client.post("/tailored-cv", json={"cv_text": _CV, "offer_text": _OFFER})
+    html = r.json()["tailored_cv_html"]
+    assert 'class="page"' in html and "<span>LangGraph</span>" in html   # mise en page deux colonnes
+
+
 def test_prepare_delegates_to_orchestrator(monkeypatch):
     _enable_llm(monkeypatch)
     monkeypatch.setattr(appmod.orchestrator, "prepare_application",

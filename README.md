@@ -1,5 +1,7 @@
 # 🎯 Career Match Agent — tailor your application to any job offer, any field
 
+[![tests](https://github.com/Yoh5/career_match_agent/actions/workflows/tests.yml/badge.svg)](https://github.com/Yoh5/career_match_agent/actions/workflows/tests.yml)
+
 Upload your CV, paste a job/internship offer → the agent **scores the fit**, gives a **go/no-go recommendation with a prioritised action plan**, tells you **which projects to highlight**, **suggests concrete CV improvements to raise the score**, and generates an **ATS-optimised, tailored CV** and **cover letter** — in **French or English**.
 
 > **Any field, not just tech.** ATS keywords are extracted *from the offer itself* by the LLM (marketing, finance, HR, healthcare, legal, sales, engineering…), so the signal is relevant whatever the role — a curated tech list only acts as a deterministic fallback.
@@ -8,7 +10,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 49 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 56 unit tests (no network, no API key)
 
 ---
 
@@ -19,8 +21,8 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 📊 **Fit score (0–100)** | LLM assessment + a **deterministic ATS keyword-coverage %** (which offer keywords are/aren't in your CV) — an objective signal, not just vibes. |
 | 📌 **Projects to highlight** | Which of *your* projects to emphasise **for this specific offer**, and why. |
 | ✎ **CV improvement suggestions** | Concrete, actionable edits (wording, missing keywords, ordering, quantification) to raise the score. |
-| 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (single column, standard sections, exact keywords you truly have). |
-| 📄 **Markdown + HTML export** | The tailored CV comes as **Markdown *and* clean printable HTML** (A4, `@page`, selectable text) — one click to **download HTML or print to PDF**. |
+| 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (standard sections, exact keywords you truly have). |
+| 📄 **Designed HTML CV** | The tailored CV is rendered as a **professional two-column HTML** (accent header, skills sidebar, A4 print) — the LLM structures your CV into JSON, a fixed template lays it out. One click to **download HTML or print to PDF**; falls back to a clean single-column render. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
@@ -84,7 +86,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 17 tests, no network / no API key
+python -m pytest tests/ -q                          # 56 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -111,8 +113,8 @@ backend/
                     cover_letter · tailored_cv · verify_grounding · optimize_cv (loop)
     memory.py       long-term memory: offers seen + recurring gaps (fail-open)
     orchestrator.py ReAct agent — LLM chooses tools until the application is ready
-    render.py       Markdown → clean printable HTML (A4, ATS-friendly), zero-dep
-  tests/            49 unit tests (agent, ats, memory, orchestrator, render, extract, app)
+    render.py       CV → designed HTML (2-col template from structured JSON) + Markdown fallback
+  tests/            56 unit tests (agent, ats, memory, orchestrator, render, extract, app)
 frontend/index.html  single-page UI (light/dark)
 ```
 

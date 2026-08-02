@@ -160,3 +160,19 @@ def test_recommend_error(monkeypatch):
     monkeypatch.setattr(agent.llm, "complete", _fail())
     rec, err = agent.recommend({"fit_score": 50}, {"pct": 40}, "fr")
     assert rec is None and err
+
+
+# ── cv_to_structured : JSON pour la mise en page HTML ──────────
+
+def test_cv_to_structured_parses(monkeypatch):
+    fake = {"name": "Axel AHO", "role": "AI Engineer", "summary": "…",
+            "experiences": [{"title": "Stage", "org": "Holokia", "bullets": ["a"]}]}
+    monkeypatch.setattr(agent.llm, "complete", _ok(json.dumps(fake)))
+    data, err = agent.cv_to_structured("# Axel AHO\n…", "fr")
+    assert err is None and data["name"] == "Axel AHO"
+
+
+def test_cv_to_structured_failopen(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _fail("pas de clé"))
+    data, err = agent.cv_to_structured("# CV", "fr")
+    assert data is None and err == "pas de clé"

@@ -50,3 +50,44 @@ def test_full_doc_is_self_contained_and_ats_friendly():
     assert "@page" in doc                    # imprimable A4
     assert "<img" not in doc                 # ATS-friendly : pas d'image
     assert "http://" not in doc.split("<style>")[0]  # rien d'externe dans le head avant le style
+
+
+# ── CV HTML mis en page (deux colonnes) depuis JSON structuré ──
+
+_STRUCT = {
+    "name": "Axel AHO", "role": "AI / Agent Engineer",
+    "contact": {"email": "a@b.com", "github": "github.com/Yoh5", "location": "Maroc"},
+    "summary": "Ingénieur IA <b>agents</b>.",
+    "experiences": [{"title": "Stage IA", "org": "Holokia", "date": "2025-2026",
+                     "stack": "Python", "bullets": ["Agent en prod", "  "]}],
+    "skills": [{"group": "IA", "items": ["LangGraph", "OpenAI"]}],
+    "education": [{"title": "Master IA", "meta": "HESTIM"}],
+    "languages": ["FR natif"],
+}
+
+
+def test_cv_html_from_structured_layout():
+    doc = render.cv_html_from_structured(_STRUCT, "fr")
+    assert doc.startswith("<!doctype html>")
+    assert "<title>Axel AHO</title>" in doc
+    assert 'class="page"' in doc and 'class="grid"' in doc      # deux colonnes
+    assert "Profil" in doc and "Expériences" in doc and "Compétences" in doc
+    assert "<span>LangGraph</span>" in doc                      # chips de compétences
+    assert "Holokia" in doc
+    assert "@page" in doc and "<img" not in doc                 # imprimable, sans image
+    assert "&lt;b&gt;agents&lt;/b&gt;" in doc                   # contenu échappé (pas d'injection)
+
+
+def test_cv_html_from_structured_skips_empty_sections():
+    doc = render.cv_html_from_structured({"name": "X"}, "fr")
+    assert "Certifications" not in doc and "Projets" not in doc   # sections vides ignorées
+
+
+def test_cv_html_english_labels():
+    doc = render.cv_html_from_structured(_STRUCT, "en")
+    assert "Profile" in doc and "Experience" in doc and "Skills" in doc
+
+
+def test_cv_html_falls_back_to_markdown_when_no_structure():
+    doc = render.cv_html("# Axel AHO\n## Compétences\n- Python", None, "fr")
+    assert doc.startswith("<!doctype html>") and "<title>Axel AHO</title>" in doc

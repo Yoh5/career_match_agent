@@ -182,6 +182,43 @@ def offer_keywords(offer_text: str, lang: str = "fr") -> tuple:
     return ([str(k).strip() for k in kws if str(k).strip()] if isinstance(kws, list) else []), None
 
 
+def cv_to_structured(cv_markdown: str, lang: str = "fr") -> tuple:
+    """Structure le CV Markdown en JSON pour un rendu HTML mis en page (deux colonnes).
+    Ne fait que RÉORGANISER le contenu existant — aucune invention. Retourne (dict, err)
+    fail-open : en cas d'erreur, l'appelant retombe sur le rendu Markdown→HTML simple."""
+    lg = _lang(lang)
+    schema = (
+        '{"name":"","role":"","contact":{"email":"","phone":"","linkedin":"","github":"",'
+        '"portfolio":"","location":""},"summary":"",'
+        '"experiences":[{"title":"","org":"","date":"","stack":"","bullets":[""]}],'
+        '"projects":[{"title":"","meta":"","stack":"","bullets":[""]}],'
+        '"education":[{"title":"","meta":""}],'
+        '"skills":[{"group":"","items":[""]}],'
+        '"certifications":[""],"languages":[""]}'
+    )
+    if lg == "en":
+        prompt = (
+            "Convert this Markdown CV into structured JSON for a designed HTML layout. "
+            "ONLY reorganise the existing content — invent nothing, drop nothing important. "
+            "Leave a field empty if absent. Keep bullets concise.\n"
+            f"Return ONLY JSON matching this schema: {schema}\n\n=== CV (Markdown) ===\n{cv_markdown[:6000]}"
+        )
+    else:
+        prompt = (
+            "Convertis ce CV Markdown en JSON structuré pour une mise en page HTML soignée. "
+            "RÉORGANISE uniquement le contenu existant — n'invente rien, ne supprime rien "
+            "d'important. Laisse un champ vide s'il est absent. Puces concises.\n"
+            f"Réponds UNIQUEMENT en JSON suivant ce schéma : {schema}\n\n=== CV (Markdown) ===\n{cv_markdown[:6000]}"
+        )
+    raw, err = llm.complete(prompt, json_mode=True, max_tokens=1800)
+    if err:
+        return None, err
+    data = llm.parse_json(raw)
+    if not isinstance(data, dict):
+        return None, "Réponse LLM illisible"
+    return data, None
+
+
 def recommend(analysis: dict, ats_cov: dict, lang: str = "fr", memory_note: str = "") -> tuple:
     """Planification + décision go/no-go (#5). Combine le signal chiffré (fit_score,
     couverture ATS, écarts) et un raisonnement LLM pour recommander : postuler /
