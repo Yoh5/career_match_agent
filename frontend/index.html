@@ -520,6 +520,28 @@ function renderReco(rec){
     '</div>';
 }
 
+/* Bandeau de trace : ATS (CV) + qualité rédactionnelle + intégrité */
+function showTrace(d){
+  const bits = [];
+  if(d.ats_final !== undefined && d.ats_final !== null)
+    bits.push("couverture ATS <b>"+d.ats_start+"% → "+d.ats_final+"%</b>");
+  if(d.quality_final !== undefined && d.quality_final !== null)
+    bits.push("qualité rédactionnelle <b>"+d.quality_start+" → "+d.quality_final+"/100</b>");
+  if(!bits.length){ $("outMeta").className="hidden"; $("outMeta").innerHTML=""; return; }
+  const inv = (d.unsupported_final||[]).length;
+  const iters = (d.iterations||[]).length;
+  const issues = d.quality_issues||[];
+  let html = "🤖 <span>Boucle agentique :</span> " + bits.join(" · ") +
+    (iters ? " en "+iters+" itération(s)" : "") + " · " +
+    (inv===0 ? "<b>0 invention ✓</b>" : inv+" à vérifier");
+  if(issues.length)
+    html += '<div style="width:100%;margin-top:5px;font-weight:500;color:var(--muted)">⚠︎ '+
+            esc(issues.slice(0,3).map(i=>i.detail||i.type).join(" · "))+'</div>';
+  $("outMeta").className = "trace";
+  $("outMeta").style.flexWrap = "wrap";
+  $("outMeta").innerHTML = html;
+}
+
 function letterOrCV(path, title, filename, btn, label){
   return async ()=>{
     setErr(""); busy(btn,true,label);
@@ -532,12 +554,7 @@ function letterOrCV(path, title, filename, btn, label){
       // exports Word/PDF : lettre → .docx, CV adapté → .pdf (mise en page)
       setExports(d.cover_letter ? {letter:d.cover_letter}
                 : {cv_markdown:d.tailored_cv_markdown, cv_structured:d.cv_structured||null});
-      if (d.ats_final !== undefined && d.ats_final !== null){
-        const inv = (d.unsupported_final||[]).length;
-        $("outMeta").className = "trace";
-        $("outMeta").innerHTML = "🤖 <span>Boucle agentique :</span> couverture ATS <b>"+d.ats_start+"% → "+d.ats_final+
-          "%</b> en "+(d.iterations||[]).length+" itération(s) · "+(inv===0 ? "<b>0 invention ✓</b>" : inv+" à vérifier");
-      } else { $("outMeta").className = "hidden"; $("outMeta").innerHTML=""; }
+      showTrace(d);
       $("outCard").classList.remove("hidden"); $("btnDownload").dataset.file = filename;
       markStep("step3", true);
       $("outCard").scrollIntoView({behavior:"smooth"});
@@ -598,13 +615,12 @@ $("btnAgent").onclick = async ()=>{
                 cv_structured:(d.tailored_cv||{}).cv_structured||null});
     if(d.tailored_cv && d.tailored_cv.cv_markdown){
       $("outTitle").textContent="📝 CV adapté (agent)"; $("outText").textContent=d.tailored_cv.cv_markdown;
-      const inv=(d.tailored_cv.unsupported_final||[]).length;
-      $("outMeta").className="trace";
-      $("outMeta").innerHTML="🤖 <span>Boucle agentique :</span> ATS <b>"+d.tailored_cv.ats_start+"% → "+d.tailored_cv.ats_final+"%</b> · "+(inv===0?"<b>0 invention ✓</b>":inv+" à vérifier");
+      showTrace(d.tailored_cv);
       $("btnDownload").dataset.file="CV_adapte.md"; setCvHtml(d.tailored_cv.cv_html||""); $("outCard").classList.remove("hidden");
     } else if(d.cover_letter){
       $("outTitle").textContent="✉️ Lettre de motivation (agent)"; $("outText").textContent=d.cover_letter;
-      $("outMeta").className="hidden"; $("btnDownload").dataset.file="lettre_motivation.txt"; setCvHtml(""); $("outCard").classList.remove("hidden");
+      showTrace({quality_start:d.cover_letter_quality, quality_final:d.cover_letter_quality});
+      $("btnDownload").dataset.file="lettre_motivation.txt"; setCvHtml(""); $("outCard").classList.remove("hidden");
     }
     markStep("step3", true);
     $("agentCard").scrollIntoView({behavior:"smooth"});
@@ -855,11 +871,7 @@ function showPrepared(id, p, forApply){
   setCvHtml(p.cv_html||"");
   // exports bureautiques du dossier (servis par le backend)
   setExports({itemId:id, hasLetter:!!p.cover_letter, hasCv:!!p.cv_markdown});
-  if(p.ats_final !== undefined && p.ats_final !== null){
-    const inv=(p.unsupported_final||[]).length;
-    $("outMeta").className="trace";
-    $("outMeta").innerHTML="🤖 <span>Boucle agentique :</span> ATS <b>"+p.ats_start+"% → "+p.ats_final+"%</b> · "+(inv===0?"<b>0 invention ✓</b>":inv+" à vérifier");
-  } else { $("outMeta").className="hidden"; }
+  showTrace(p);
   $("applyBar").classList.toggle("hidden", !forApply || !Object.keys(p).length);
   $("btnDownload").dataset.file="dossier_candidature.txt";
   $("outCard").classList.remove("hidden");

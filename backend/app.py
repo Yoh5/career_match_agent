@@ -153,13 +153,23 @@ def do_prepare(body: OfferBody):
 
 @app.post("/cover-letter")
 def do_cover_letter(body: OfferBody):
+    """Boucle agentique : rédige → mesure la qualité rédactionnelle (déterministe) →
+    vérifie l'anti-invention → révise → relit. Renvoie la lettre + la trace."""
     _guard_llm()
     cv, offer = _resolve(body)
     style = (body.letter_style or "").strip() or templates.get_all().get("letter_prompt", "")
-    text, err = agent.cover_letter(cv, offer, body.lang, body.tone or "professionnel", style_notes=style)
+    res, err = agent.optimize_cover_letter(cv, offer, body.lang, body.tone or "professionnel",
+                                           style_notes=style)
     if err:
         raise HTTPException(502, f"Génération indisponible : {err}")
-    return {"cover_letter": text}
+    return {
+        "cover_letter": res["cover_letter"],
+        "quality_start": res["quality_start"],
+        "quality_final": res["quality_final"],
+        "quality_issues": res["quality_issues"],
+        "iterations": res["iterations"],
+        "unsupported_final": res["unsupported_final"],
+    }
 
 
 @app.post("/tailored-cv")
@@ -181,6 +191,9 @@ def do_tailored_cv(body: OfferBody):
         "ats_final": result["ats_final"],
         "iterations": result["iterations"],
         "unsupported_final": result["unsupported_final"],
+        "quality_start": result["quality_start"],
+        "quality_final": result["quality_final"],
+        "quality_issues": result["quality_issues"],
     }
 
 
@@ -351,8 +364,9 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
     structured, _ = agent.cv_to_structured(md, body.lang)
     # consignes de style de la lettre : requête > template 'letter_prompt' sauvegardé
     style = (body.letter_style or "").strip() or templates.get_all().get("letter_prompt", "")
-    letter, lerr = agent.cover_letter(body.cv_text, offer, body.lang,
-                                      body.tone or "professionnel", style_notes=style)
+    lres, lerr = agent.optimize_cover_letter(body.cv_text, offer, body.lang,
+                                             body.tone or "professionnel", style_notes=style)
+    letter = (lres or {}).get("cover_letter", "")
 
     # personnalisation des messages : meilleur projet à mettre en avant selon l'analyse
     analysis, _ = agent.analyze(body.cv_text, offer, {"pct": result["ats_final"], "matched": [], "missing": []}, body.lang)
@@ -376,6 +390,8 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
         "messages": messages,
         "ats_start": result["ats_start"], "ats_final": result["ats_final"],
         "unsupported_final": result["unsupported_final"],
+        "quality_start": result["quality_start"], "quality_final": result["quality_final"],
+        "letter_quality": (lres or {}).get("quality_final"),
     }
     pipeline.update(item_id, status="ready", prepared=prepared,
                     fit_score=(analysis or {}).get("fit_score", item.get("fit_score")),

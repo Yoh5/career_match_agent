@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 98 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 123 unit tests (no network, no API key)
 
 ---
 
@@ -30,7 +30,8 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
 | 🛡️ **ATS-optimised** | Plain, keyword-aligned, parsable output — to pass automated screening. |
-| 🔁 **Agentic optimisation loop** | The tailored CV isn't a one-shot: the agent **generates → measures ATS coverage (deterministic) → verifies integrity → revises**, keeping the best version. A real goal-directed loop with a measurable objective. |
+| 🔁 **Agentic optimisation loops** | Neither the CV nor the letter is a one-shot: the agent **generates → measures ATS coverage *and* writing quality (both deterministic) → verifies integrity → revises → proofreads**, keeping the best version. Two measurable objectives, not vibes. |
+| ✍️ **Writing-quality gate** | A deterministic checker (`quality.py`, no LLM) flags unfilled placeholders, **language mixing** (English left in a French letter), repeated words, spacing and French typography, AI preambles — then drives a targeted proofread. Scores are shown in the UI. |
 | 🤖 **Autonomous agent (tool-calling)** | `/prepare` runs a **ReAct loop**: the LLM *chooses* which tools to call (measure ATS, analyse, recall memory, recommend, write CV/letter) and in what order — every step is traced. |
 | 🧠 **Long-term memory** | Remembers offers already analysed and **recurring gaps** across offers ("you're often missing X") to sharpen future advice. |
 | 🔎 **Internship sourcing** | Describe the internship you want (free text) + keywords/location → the agent searches the sources **you pick from its catalog** (verified public ATS boards incl. French companies, RemoteOK, Jobicy-France, Arbeitnow-EU, any custom **RSS feed** — e.g. Novojob for Morocco/Africa) with FR/EN location aliases (*Maroc ↔ Morocco ↔ Casablanca…*). |
@@ -43,29 +44,34 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 
 Auto-submitting on LinkedIn/Indeed violates their ToS, gets real accounts banned, and dies on CAPTCHAs. Like the best tools in this space (career-ops: *"it never submits, sends, or clicks anything"*), this agent is **a filter and a builder, not a spray-and-pray auto-applier**: it sources from job boards companies *voluntarily* expose as public JSON APIs (plus any RSS feed you add), ranks, and prepares everything — then **shows you each CV + letter for review before you make the final send** on the offer's own page.
 
-## 🔁 The agentic loop (tailored CV)
+## 🔁 The agentic loops (tailored CV **and** cover letter)
 
-`optimize_cv()` doesn't just generate — it *iterates toward a goal*:
+Both documents are produced by a bounded loop with **two deterministic objective functions** — ATS relevance (`ats.py`) and **writing quality** (`quality.py`) — plus an anti-fabrication gate:
 
 ```
-generate tailored CV
+generate
   └─► loop (bounded):
-        measure   ats.coverage(cv, offer_keywords)      ← deterministic objective (%)
-        verify    agent.verify_grounding(cv, base_cv)    ← anti-fabrication check
-        if ATS ≥ target AND no invented claims → stop
-        else revise (add real missing keywords, remove unsupported claims) → repeat
-  └─► return the BEST version (0 fabrication first, then highest ATS) + a trace
+        measure   ats.coverage(doc, offer_keywords)   ← relevance, deterministic %
+        measure   quality.score(doc, lang)            ← correctness, deterministic 0-100
+        verify    verify_grounding(doc, base_cv)      ← anti-fabrication check
+        if ATS ≥ target AND quality ≥ target AND no invented claims → stop
+        if the revision changed nothing (fingerprint) → stop        ← convergence
+        else revise (real missing keywords + unsupported claims + writing defects)
+  └─► keep the BEST version: integrity first, then a 70/30 ATS-quality composite
+  └─► polish: targeted proofread, kept only if it measurably improves AND invents nothing
 ```
 
-It keeps the candidate honest (unsupported claims are detected and removed) **and** pushes the ATS score up — a measurable generate→evaluate→reflect→revise loop, not a single prompt.
+`quality.py` catches exactly what an LLM gets wrong in an application, **without any LLM call**: unfilled placeholders (`[Company]`, `XXX`), **language mixing** (English sentences left in a French letter — measured on *function words*, so "Machine Learning" is never flagged), repeated words, spacing and French typography, leftover AI preambles. On a deliberately broken letter the loop takes writing quality from **10/100 to 100/100**.
+
+**Efficiency:** one ATS measurement per round (the coverage dict already carries both `pct` and `missing`), grounding results are memoised per version instead of being recomputed at the end, the loop stops on convergence, and a revision that regresses never overwrites the best version.
 
 ## 🤖 Why it's a real agent (not a prompt wrapper)
 
 | Agent trait | Here |
 |---|---|
 | **Autonomous tool-use** | `/prepare` = a ReAct loop where the LLM *decides* which tools to call (fetch offer, measure ATS, analyse, recall memory, recommend, write CV/letter) — `core/orchestrator.py`. |
-| **Goal-directed loop** | `optimize_cv` iterates toward a measurable ATS target with an anti-fabrication gate. |
-| **Self-critique** | `verify_grounding` checks each claim against the base CV and drives revision. |
+| **Goal-directed loops** | `optimize_cv` and `optimize_cover_letter` iterate toward measurable ATS **and** writing-quality targets, behind an anti-fabrication gate. |
+| **Self-critique** | `verify_grounding` checks each claim against the base CV, and `quality.py` scores the writing — both drive the revision prompt. |
 | **Planning** | `recommend` turns the assessment into a go/no-go decision + ordered action plan. |
 | **Long-term memory** | `core/memory.py` remembers offers and surfaces recurring gaps across sessions. |
 
@@ -98,7 +104,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 98 tests, no network / no API key
+python -m pytest tests/ -q                          # 123 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -107,7 +113,7 @@ python -m pytest tests/ -q                          # 98 tests, no network / no 
 |---|---|---|
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
 | `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis, recommendation, memory}` |
-| `POST /cover-letter` | `{cv_text, offer_text, lang, tone}` | `{cover_letter}` |
+| `POST /cover-letter` | `{cv_text, offer_text, lang, tone, letter_style}` | `{cover_letter, quality_start, quality_final, quality_issues, iterations, unsupported_final}` |
 | `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, iterations, unsupported_final}` |
 | `POST /prepare` | `{cv_text, offer_text\|offer_url, lang}` | `{steps[], analysis, ats, recommendation, cover_letter, tailored_cv, summary}` (autonomous agent) |
 | `GET /memory` | — | `{count, avg_fit, recurring_gaps[]}` |
@@ -139,8 +145,10 @@ backend/
     pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
     templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
     export.py       cover letter → Word (.docx) · tailored CV → designed 2-column PDF (fpdf2)
-  tests/            98 unit tests (agent, ats, memory, orchestrator, render, extract, app,
-                    sources, pipeline, templates, export)
+    quality.py      deterministic writing-quality score: placeholders, language mixing,
+                    typos, French typography, AI artefacts (the loops' 2nd objective)
+  tests/            123 unit tests (agent, ats, memory, orchestrator, render, extract, app,
+                    sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```
 

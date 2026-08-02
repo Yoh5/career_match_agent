@@ -67,7 +67,8 @@ def test_tailored_cv_returns_html(monkeypatch):
     _enable_llm(monkeypatch)
     monkeypatch.setattr(appmod.agent, "optimize_cv", lambda *a, **k: (
         {"cv_markdown": "# Axel AHO\n## Compétences\n- Python", "ats_start": 60, "ats_final": 90,
-         "iterations": [{}], "unsupported_final": []}, None))
+         "iterations": [{}], "unsupported_final": [],
+         "quality_start": 90, "quality_final": 98, "quality_issues": []}, None))
     r = client.post("/tailored-cv", json={"cv_text": _CV, "offer_text": _OFFER})
     assert r.status_code == 200
     d = r.json()
@@ -81,7 +82,8 @@ def test_tailored_cv_uses_structured_layout(monkeypatch):
     _enable_llm(monkeypatch)
     monkeypatch.setattr(appmod.agent, "optimize_cv", lambda *a, **k: (
         {"cv_markdown": "# Axel AHO", "ats_start": 60, "ats_final": 90,
-         "iterations": [{}], "unsupported_final": []}, None))
+         "iterations": [{}], "unsupported_final": [],
+         "quality_start": 90, "quality_final": 98, "quality_issues": []}, None))
     monkeypatch.setattr(appmod.agent, "cv_to_structured", lambda *a, **k: (
         {"name": "Axel AHO", "skills": [{"group": "IA", "items": ["LangGraph"]}]}, None))
     r = client.post("/tailored-cv", json={"cv_text": _CV, "offer_text": _OFFER})

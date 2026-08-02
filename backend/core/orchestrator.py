@@ -130,12 +130,14 @@ def _run_tool(name: str, args: dict, ctx: dict) -> dict:
                 "action_plan": rec["action_plan"][:6]}
 
     if name == "write_cover_letter":
-        text, err = agent.cover_letter(ctx["cv_text"], ctx["offer_text"], ctx["lang"],
-                                       args.get("tone", "professionnel"))
+        res, err = agent.optimize_cover_letter(ctx["cv_text"], ctx["offer_text"], ctx["lang"],
+                                               args.get("tone", "professionnel"))
         if err:
             return {"error": err}
+        text = res["cover_letter"]
         out["cover_letter"] = text
-        return {"chars": len(text), "preview": text[:160]}
+        out["cover_letter_quality"] = res["quality_final"]
+        return {"chars": len(text), "quality": res["quality_final"], "preview": text[:160]}
 
     if name == "write_tailored_cv":
         res, err = agent.optimize_cv(ctx["cv_text"], ctx["offer_text"], ctx["lang"])
@@ -146,6 +148,7 @@ def _run_tool(name: str, args: dict, ctx: dict) -> dict:
         res["cv_structured"] = structured          # pour l'export PDF sans rappel LLM
         out["tailored_cv"] = res
         return {"ats_start": res["ats_start"], "ats_final": res["ats_final"],
+                "quality": res["quality_final"],
                 "unsupported_final": len(res["unsupported_final"])}
 
     if name == "finish":

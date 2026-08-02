@@ -72,15 +72,18 @@ def _mock_prepare_llm(monkeypatch, captured=None):
     monkeypatch.setattr(appmod.llm, "is_enabled", lambda: True)
     monkeypatch.setattr(appmod.agent, "optimize_cv",
                         lambda *a, **k: ({"cv_markdown": "# Axel AHO\nPython", "ats_start": 50,
-                                          "ats_final": 85, "iterations": [], "unsupported_final": []}, None))
+                                          "ats_final": 85, "iterations": [], "unsupported_final": [],
+                                          "quality_start": 90, "quality_final": 97,
+                                          "quality_issues": []}, None))
     monkeypatch.setattr(appmod.agent, "cv_to_structured", lambda *a, **k: (None, "off"))
 
-    def fake_letter(cv, offer, lang="fr", tone="professionnel", style_notes=""):
+    def fake_letter(cv, offer, lang="fr", tone="professionnel", style_notes="", **kw):
         if captured is not None:
             captured["style_notes"] = style_notes
-        return "Madame, Monsieur…", None
+        return {"cover_letter": "Madame, Monsieur…", "quality_start": 92, "quality_final": 97,
+                "quality_issues": [], "iterations": [], "unsupported_final": []}, None
 
-    monkeypatch.setattr(appmod.agent, "cover_letter", fake_letter)
+    monkeypatch.setattr(appmod.agent, "optimize_cover_letter", fake_letter)
     monkeypatch.setattr(appmod.agent, "analyze",
                         lambda *a, **k: ({"fit_score": 80, "projects_to_highlight":
                                           ["Career Match Agent — agent IA de candidature"]}, None))

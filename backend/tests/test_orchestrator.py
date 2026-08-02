@@ -36,8 +36,10 @@ def _patch_agent(monkeypatch):
         {"decision": "postuler", "confidence": 80, "rationale": "ok", "action_plan": ["Ajoute Docker"]}, None))
     monkeypatch.setattr(agent, "optimize_cv", lambda *a, **k: (
         {"cv_markdown": "# CV", "ats_start": 60, "ats_final": 100, "iterations": [{}],
-         "unsupported_final": []}, None))
-    monkeypatch.setattr(agent, "cover_letter", lambda *a, **k: ("Madame, Monsieur…", None))
+         "unsupported_final": [], "quality_start": 88, "quality_final": 97, "quality_issues": []}, None))
+    monkeypatch.setattr(agent, "optimize_cover_letter", lambda *a, **k: (
+        {"cover_letter": "Madame, Monsieur…", "quality_start": 90, "quality_final": 96,
+         "quality_issues": [], "iterations": [{}], "unsupported_final": []}, None))
 
 
 def test_prepare_runs_react_loop(monkeypatch, tmp_path):
