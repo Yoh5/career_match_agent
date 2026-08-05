@@ -53,10 +53,16 @@ _ATS_LABELS = {
 
 
 def _latin(s: str) -> str:
-    """fpdf2 en polices de base = latin-1 : on remplace les caractères hors charte."""
+    """fpdf2 en polices de base = latin-1 : on remplace les caractères hors charte.
+
+    Tout ce qui n'est pas traduit ici finit en « ? » dans le PDF — un « CV ↔ offre »
+    devient « CV ? offre » et le CV part avec une faute sous les yeux du recruteur.
+    La table couvre donc les symboles qu'on croise vraiment dans un CV tech."""
     repl = {"—": "-", "–": "-", "‘": "'", "’": "'", "“": '"',
-            "”": '"', "•": "-", "…": "...", " ": " ", "→": "->",
-            "·": "-", "✅": "", "▸": "-"}
+            "”": '"', "•": "-", "…": "...", " ": " ", "→": "->",
+            "·": "-", "✅": "", "▸": "-", "↔": "<->", "←": "<-",
+            "⇒": "=>", "≥": ">=", "≤": "<=", "×": "x", "≠": "!=",
+            "€": "EUR", "™": "(TM)", "✓": "", "★": "", "▪": "-"}
     for a, b in repl.items():
         s = (s or "").replace(a, b)
     return s.encode("latin-1", "replace").decode("latin-1")
@@ -186,7 +192,7 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
         return _cv_pdf_fallback(pdf, cv_markdown)
 
     if str(layout).lower() != "designed":
-        return _cv_pdf_ats(pdf, structured, lg)
+        return _ats_autofit(structured, lg, first=pdf)
 
     # ── Bandeau d'en-tête ──
     contact = structured.get("contact") or {}
@@ -270,14 +276,54 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
     return bytes(pdf.output())
 
 
-def _cv_pdf_ats(pdf, s: Dict, lg: str) -> bytes:
+def _ats_autofit(s: Dict, lg: str, first=None) -> bytes:
+    """Rend le CV ATS et tente de le faire tenir sur UNE page.
+
+    Un CV junior qui déborde de quelques lignes se lit mal — mais on ne compresse
+    pas à l'aveugle : on essaie des paliers de plus en plus serrés et on s'arrête
+    au premier qui tient. Si même le plus serré déborde, c'est que le contenu est
+    réellement trop long, et on rend la version LISIBLE (échelle 1) sur deux pages
+    plutôt qu'un mur de texte illisible."""
+    from fpdf import FPDF
+
+    def render(scale, pdf=None):
+        if pdf is None:
+            pdf = FPDF(orientation="P", unit="mm", format="A4")
+            pdf.set_auto_page_break(False)
+            pdf.set_margins(_M, _M, _M)
+            pdf.add_page()
+        return _cv_pdf_ats(pdf, s, lg, scale)
+
+    full = render(1.0, first)
+    if _page_count(full) <= 1:
+        return full
+    for scale in (0.94, 0.88, 0.82):
+        data = render(scale)
+        if _page_count(data) <= 1:
+            return data
+    return full
+
+
+def _page_count(pdf_bytes: bytes) -> int:
+    try:
+        import io as _io
+        from pypdf import PdfReader
+        return len(PdfReader(_io.BytesIO(pdf_bytes)).pages)
+    except Exception:                       # pragma: no cover - garde-fou
+        return 1
+
+
+def _cv_pdf_ats(pdf, s: Dict, lg: str, scale: float = 1.0) -> bytes:
     """Mise en page UNE COLONNE, pensée pour être ré-extraite proprement.
 
     Les choix ici sont tous dictés par le parsing, pas par l'esthétique :
     flux de texte unique (pas de colonne latérale à entrelacer), intitulés de
     section canoniques, coordonnées en clair sur les premières lignes, puces
     écrites « - » DANS la chaîne (une puce dessinée en cellule séparée ressort
-    détachée de son texte à l'extraction), aucun aplat de couleur."""
+    détachée de son texte à l'extraction), aucun aplat de couleur.
+
+    `scale` resserre uniformément corps et interlignes — utilisé par `cv_pdf`
+    pour tenter de faire tenir le CV sur une page (voir `_ats_autofit`)."""
     from fpdf.enums import XPos, YPos
 
     L = _ATS_LABELS[lg]
@@ -285,26 +331,26 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str) -> bytes:
     pdf.set_auto_page_break(True, margin=_M)
     pdf.set_text_color(*_INK)
 
-    def line(txt, size=9.4, style="", h=4.5, gap=0.0):
+    def line(txt, size=9.0, style="", h=4.1, gap=0.0):
         txt = _latin(txt).strip()
         if not txt:
             return
-        pdf.set_font("Helvetica", style, size)
+        pdf.set_font("Helvetica", style, max(7.4, size * scale))
         pdf.set_x(_M)
-        pdf.multi_cell(W, h, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(W, h * scale, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         if gap:
-            pdf.ln(gap)
+            pdf.ln(gap * scale)
 
     def heading(txt):
-        pdf.ln(2.6)
-        line(txt, size=10.2, style="B", h=5)
+        pdf.ln(2.0 * scale)
+        line(txt, size=9.8, style="B", h=4.6)
         pdf.set_draw_color(*_LINE)
         pdf.line(_M, pdf.get_y() + 0.2, _M + W, pdf.get_y() + 0.2)
-        pdf.ln(1.6)
+        pdf.ln(1.2 * scale)
 
     # ── En-tête : nom, titre, coordonnées en texte brut ──
-    line(s.get("name") or "", size=17, style="B", h=8)
-    line(s.get("role") or "", size=11, h=5.5)
+    line(s.get("name") or "", size=16, style="B", h=7.4)
+    line(s.get("role") or "", size=10.5, h=5.0)
     c = s.get("contact") or {}
     inline = _clean([c.get("email"), c.get("phone"), c.get("location")])
     if inline:
@@ -345,8 +391,8 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str) -> bytes:
             if meta:
                 line(meta, size=8.8)
             for b in _clean(e.get("bullets"))[:8]:
-                line("- " + str(b), h=4.3)
-            pdf.ln(1.2)
+                line("- " + str(b), h=3.95)
+            pdf.ln(0.9)
 
     edu = _clean(s.get("education"))
     if edu:
@@ -359,12 +405,17 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str) -> bytes:
             else:
                 line(str(e))
 
-    for key, label in (("certifications", L["certs"]), ("languages", L["langs"])):
-        entries = _clean(s.get(key))
-        if entries:
-            heading(label)
-            for e in entries:
-                line("- " + str(e), h=4.3)
+    certs = _clean(s.get("certifications"))
+    if certs:
+        heading(L["certs"])
+        for e in certs:
+            line("- " + str(e), h=3.95)
+    langs = _clean(s.get("languages"))
+    if langs:
+        # une seule ligne séparée par des virgules : aussi bien parsée qu'une liste
+        # à puces, pour un tiers de la hauteur
+        heading(L["langs"])
+        line(", ".join(str(x) for x in langs), h=3.95)
 
     return bytes(pdf.output())
 

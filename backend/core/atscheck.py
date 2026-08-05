@@ -68,8 +68,10 @@ _OPTIONAL_SECTIONS = {
 
 # Caractères qui ne survivent pas à une chaîne d'export (emoji, pictos, puces exotiques).
 _EXOTIC = re.compile(r"[�•▪●✓✔★☆\U0001F300-\U0001FAFF]")
-# « co?t », « ma?trise » : une substitution latin-1 ratée au milieu d'un mot.
-_MANGLED = re.compile(r"[A-Za-zÀ-ÿ]\?[A-Za-zÀ-ÿ]")
+# Substitutions latin-1 ratées : « co?t » (au milieu d'un mot) et « CV ? offre »
+# (un symbole remplacé). Le second motif exige une MINUSCULE après le « ? » :
+# une vraie question enchaîne sur une majuscule ou une fin de ligne.
+_MANGLED = re.compile(r"[A-Za-zÀ-ÿ]\?[A-Za-zÀ-ÿ]|[a-zà-ÿ0-9] \? [a-zà-ÿ]")
 _TOKEN = re.compile(r"\S+")
 
 
@@ -133,7 +135,12 @@ def _heading_mid_line(text: str) -> int:
 
     Signature classique d'une extraction en colonnes : le parseur recolle la barre
     latérale au texte principal et produit « ...déployé en production COMPÉTENCES
-    Python, SQL ». Un CV une colonne ne produit jamais ça."""
+    Python, SQL ». Un CV une colonne ne produit jamais ça.
+
+    Deux garde-fous, appris d'un faux positif : on n'accepte qu'un intitulé
+    **multi-mots** (« expérience professionnelle ») ou un mot isolé écrit **en
+    CAPITALES** dans le texte d'origine. Sans ça, un profil qui dit simplement
+    « Expérience concrète du cycle complet » déclenche l'alerte."""
     variants = [v for group in list(_SECTIONS.values()) + list(_OPTIONAL_SECTIONS.values())
                 for v in group if len(v) >= 6]
     hits = 0
@@ -141,10 +148,17 @@ def _heading_mid_line(text: str) -> int:
         n = _norm(line)
         if len(n) < 45:                    # trop court pour être une ligne de corps
             continue
+        aligned = len(n) == len(line)      # le repli d'accents a-t-il conservé les index ?
         for v in variants:
-            m = re.search(r"(?<![a-z])" + re.escape(v) + r"(?![a-z])", n)
-            if m and m.start() > 25:       # l'intitulé commence loin du début de ligne
+            # `_` et `.` inclus dans les bornes : « my_portfolio_website » n'est pas un intitulé
+            m = re.search(r"(?<![a-z0-9_.])" + re.escape(v) + r"(?![a-z0-9_.])", n)
+            if not m or m.start() <= 25:   # l'intitulé doit commencer loin du début de ligne
+                continue
+            if " " in v:                   # intitulé canonique multi-mots : suffisant
                 hits += 1
+                break
+            if aligned and line[m.start():m.end()].isupper():
+                hits += 1                  # mot isolé, mais écrit en capitales = vrai intitulé
                 break
     return hits
 
@@ -236,12 +250,16 @@ def _audit_text(text: str, pages: int, keywords: Optional[List[str]] = None,
                     "mots-clés présents dans le CV mais PERDUS à l'extraction du PDF : "
                     + ", ".join(loss[:8]), len(loss))
     elif source_text:
-        # Sans offre, on compare quand même la matière : le PDF doit restituer
-        # l'essentiel du texte source.
+        # Sans offre, on compare la matière brute : le PDF doit restituer l'essentiel
+        # du texte source. Seuil volontairement bas et sévérité modérée — une partie
+        # de l'écart vient de la CONDENSATION de la mise en page (puces raccourcies,
+        # entrées structurées), pas d'une perte à l'extraction. Le signal fiable
+        # reste `keyword_loss`, mesuré terme à terme.
         src_words = len(re.findall(r"[A-Za-zÀ-ÿ0-9']+", source_text))
-        if src_words and words < 0.7 * src_words:
-            add("content_loss", "high",
-                f"{round(100 * (1 - words / src_words))}% du texte source ne ressort pas du PDF",
+        if src_words and words < 0.55 * src_words:
+            add("content_loss", "medium",
+                f"le PDF ne restitue que {round(100 * words / src_words)}% des mots du texte "
+                "source (condensation de la mise en page ou perte à l'extraction)",
                 src_words - words)
 
     # 4. Coordonnées : un ATS crée la fiche candidat à partir de ces regex.
