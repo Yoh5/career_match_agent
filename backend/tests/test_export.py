@@ -98,6 +98,59 @@ def test_designed_layout_still_available():
     assert "Axel AHO" in txt and "Career Match Agent" in txt
 
 
+# ── Liens cliquables : un dépôt qu'on ne peut pas ouvrir ne sert à rien ─────
+
+def _links(data):
+    from pypdf import PdfReader
+    return [(a.get_object().get("/A") or {}).get("/URI")
+            for page in PdfReader(io.BytesIO(data)).pages
+            for a in (page.get("/Annots") or [])
+            if a.get_object().get("/Subtype") == "/Link"]
+
+
+def test_href_builds_clickable_urls():
+    assert export._href("github.com/Yoh5") == "https://github.com/Yoh5"
+    assert export._href("https://github.com/Yoh5") == "https://github.com/Yoh5"
+    assert export._href("- github.com/Yoh5/career_match_agent") == \
+        "https://github.com/Yoh5/career_match_agent"
+    assert export._href("a@b.co") == "mailto:a@b.co"
+
+
+def test_href_ignores_plain_text():
+    for s in ("Node.js", "React 19", "Développeur logiciel", "Python, FastAPI", ""):
+        assert export._href(s) is None, s
+
+
+def test_both_layouts_expose_contact_and_repo_links():
+    s = dict(_STRUCTURED)
+    s["projects"] = [{"title": "Career Match Agent", "meta": "perso",
+                      "bullets": ["Boucle agentique ATS", "github.com/Yoh5/career_match_agent"]}]
+    for layout in ("ats", "designed"):
+        urls = _links(export.cv_pdf(s, "", "fr", layout=layout))
+        assert "mailto:a@b.co" in urls, layout
+        assert "https://github.com/Yoh5" in urls, layout
+        assert "https://github.com/Yoh5/career_match_agent" in urls, layout
+
+
+def test_links_do_not_alter_the_extracted_text():
+    """L'annotation se pose PAR-DESSUS le texte : l'ATS lit toujours la même chose."""
+    s = dict(_STRUCTURED)
+    s["projects"] = [{"title": "P", "bullets": ["github.com/Yoh5/career_match_agent"]}]
+    txt = _text(export.cv_pdf(s, "", "fr"))
+    assert "github.com/Yoh5/career_match_agent" in txt
+
+
+def test_ats_layout_autofits_to_one_page_when_close():
+    from pypdf import PdfReader
+    s = dict(_STRUCTURED)
+    # contenu qui déborde de peu : l'auto-ajustement doit le ramener sur une page
+    s["experiences"] = [{"title": f"Poste {i}", "org": "Org", "date": "2026",
+                         "bullets": [f"réalisation {i}.{j} décrite sur une ligne complète"
+                                     for j in range(3)]} for i in range(7)]
+    data = export.cv_pdf(s, "", "fr", layout="ats")
+    assert len(PdfReader(io.BytesIO(data)).pages) == 1
+
+
 def test_accents_survive_the_pdf_round_trip():
     s = dict(_STRUCTURED, summary="Modélisation à Casablanca, coût réduit, données traitées.")
     txt = _text(export.cv_pdf(s, "", "fr"))

@@ -4,6 +4,15 @@ import json
 import os
 import sys
 
+_LINK_MD = """**Tech Watch Agent — agent de veille**
+- Scanne 7+ sources en parallèle.
+- github.com/Yoh5/agent_veille_tech
+
+**Career Match Agent — candidature ciblée**
+- Boucles agentiques à objectifs déterministes.
+- github.com/Yoh5/career_match_agent
+"""
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core import agent  # noqa: E402
 
@@ -176,3 +185,41 @@ def test_cv_to_structured_failopen(monkeypatch):
     monkeypatch.setattr(agent.llm, "complete", _fail("pas de clé"))
     data, err = agent.cv_to_structured("# CV", "fr")
     assert data is None and err == "pas de clé"
+
+
+# ── restore_links : filet déterministe contre les URL perdues par le LLM ────
+
+def test_restore_links_reattaches_urls_to_the_right_entry():
+    """`cv_to_structured` supprime parfois les liens de dépôt en condensant.
+    Sans filet, un CV d'ingénieur perd la preuve de ses projets."""
+    structured = {"projects": [
+        {"title": "Tech Watch Agent", "bullets": ["Scanne 7+ sources en parallèle."]},
+        {"title": "Career Match Agent", "bullets": ["Boucles agentiques à objectifs déterministes."]},
+    ]}
+    out = agent.restore_links(structured, _LINK_MD)
+    assert "github.com/Yoh5/agent_veille_tech" in out["projects"][0]["bullets"]
+    assert "github.com/Yoh5/career_match_agent" in out["projects"][1]["bullets"]
+
+
+def test_restore_links_is_a_noop_when_urls_already_present():
+    structured = {"projects": [
+        {"title": "Tech Watch Agent", "bullets": ["Scanne.", "github.com/Yoh5/agent_veille_tech"]},
+        {"title": "Career Match Agent", "bullets": ["Boucles.", "github.com/Yoh5/career_match_agent"]},
+    ]}
+    before = [list(p["bullets"]) for p in structured["projects"]]
+    out = agent.restore_links(structured, _LINK_MD)
+    assert [p["bullets"] for p in out["projects"]] == before
+
+
+def test_restore_links_never_invents_an_entry():
+    """Une URL dont on ne sait pas à quelle entrée elle appartient est ignorée —
+    on ne crée pas de projet fantôme pour la loger."""
+    structured = {"projects": [{"title": "Autre projet", "bullets": ["x"]}]}
+    out = agent.restore_links(structured, _LINK_MD)
+    assert len(out["projects"]) == 1
+    assert out["projects"][0]["bullets"] == ["x"]
+
+
+def test_restore_links_tolerates_garbage():
+    assert agent.restore_links(None, _LINK_MD) is None
+    assert agent.restore_links({}, "") == {}

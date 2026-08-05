@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 166 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 175 unit tests (no network, no API key)
 
 ---
 
@@ -165,7 +165,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 166 tests, no network / no API key
+python -m pytest tests/ -q                          # 175 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -215,7 +215,7 @@ backend/
                     "ats" 1-column (default, for the robot) · "designed" 2-column (for a human)
     quality.py      deterministic writing-quality score: placeholders, language mixing,
                     typos, French typography, AI artefacts (the loops' 2nd objective)
-  tests/            166 unit tests (agent, ats, atscheck, memory, orchestrator, render,
+  tests/            175 unit tests (agent, ats, atscheck, memory, orchestrator, render,
                     extract, app, sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```

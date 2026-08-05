@@ -123,7 +123,7 @@ class _Col:
             self.pdf.page = self.page
             self.y = _M
 
-    def text(self, s, size=9.2, style="", color=_INK, lh=1.32, before=0.0):
+    def text(self, s, size=9.2, style="", color=_INK, lh=1.32, before=0.0, link=None):
         s = _latin(s).strip()
         if not s:
             return
@@ -134,10 +134,10 @@ class _Col:
         self._ensure(line_h + before)
         self.y += before
         self.pdf.set_xy(self.x, self.y)
-        self.pdf.multi_cell(self.w, line_h, s)
+        self.pdf.multi_cell(self.w, line_h, s, link=link or "")
         self.y = self.pdf.get_y()
 
-    def bullet(self, s, size=9.2):
+    def bullet(self, s, size=9.2, link=None):
         s = _latin(s).strip()
         if not s:
             return
@@ -150,7 +150,7 @@ class _Col:
         self.pdf.cell(4, line_h, "-")
         self.pdf.set_text_color(*_INK)
         self.pdf.set_xy(self.x + 4, self.y)
-        self.pdf.multi_cell(self.w - 4, line_h, s)
+        self.pdf.multi_cell(self.w - 4, line_h, s, link=link or "")
         self.y = self.pdf.get_y()
 
     def heading(self, s):
@@ -166,6 +166,33 @@ class _Col:
 
 def _clean(items) -> List:
     return [x for x in (items or []) if x]
+
+
+# Une URL écrite « github.com/Yoh5 » n'est pas cliquable : sans schéma, aucun
+# lecteur PDF n'en fait un lien. On reconstruit donc l'adresse complète.
+# Liste blanche de domaines de premier niveau : sans elle, « Node.js » et
+# « Next.js » deviendraient des liens morts vers https://Node.js
+_URLISH = re.compile(
+    r"^(?:https?://\S+"
+    r"|(?:www\.)?(?:[\w-]+\.)+(?:com|io|dev|net|org|ai|app|fr|ma|co|be|ch|eu|tech|me)"
+    r"(?:/\S*)?)$", re.IGNORECASE)
+_MAILISH = re.compile(r"^[\w.%+\-]+@[\w.\-]+\.[a-z]{2,}$", re.IGNORECASE)
+
+
+def _href(s: str):
+    """URL cliquable correspondant à `s`, ou None si ce n'en est pas une.
+
+    Un CV sans liens actifs oblige le recruteur à retaper l'adresse du dépôt à la
+    main — autant dire qu'il ne le fera pas. Le texte affiché reste inchangé (les
+    ATS lisent le texte, pas l'annotation) ; seul le lien est ajouté par-dessus."""
+    s = (s or "").strip().lstrip("-•").strip()
+    if not s or " " in s:
+        return None
+    if _MAILISH.match(s):
+        return "mailto:" + s
+    if _URLISH.match(s):
+        return s if s.lower().startswith("http") else "https://" + s
+    return None
 
 
 def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
@@ -211,6 +238,9 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
         pdf.set_font("Helvetica", "", 8)
         pdf.set_xy(_M, 22)
         pdf.multi_cell(_PAGE_W - 2 * _M, 4, _latin("  |  ".join(contact_bits)))
+        mail = _href(str(contact.get("email") or ""))
+        if mail and contact_bits[0] == contact.get("email"):
+            pdf.link(_M, 22, pdf.get_string_width(_latin(str(contact["email"]))), 4, mail)
 
     y0 = head_h + 5
     main = _Col(pdf, _MAIN_X, _MAIN_W, y0)
@@ -237,7 +267,7 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
             if sub:
                 main.text(sub, size=8.2, color=_MUTED)
             for b in _clean(e.get("bullets"))[:6]:
-                main.bullet(str(b))
+                main.bullet(str(b), link=_href(str(b)))
 
     # ── Barre latérale ──
     pdf.page = side.page
@@ -271,7 +301,7 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
     if links:
         side.heading(L["links"])
         for u in links:
-            side.text(str(u), size=8.0, color=_ACCENT)
+            side.text(str(u), size=8.0, color=_ACCENT, link=_href(str(u)))
 
     return bytes(pdf.output())
 
@@ -331,15 +361,26 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str, scale: float = 1.0) -> bytes:
     pdf.set_auto_page_break(True, margin=_M)
     pdf.set_text_color(*_INK)
 
-    def line(txt, size=9.0, style="", h=4.1, gap=0.0):
+    def line(txt, size=9.0, style="", h=4.1, gap=0.0, link=None):
         txt = _latin(txt).strip()
         if not txt:
             return
         pdf.set_font("Helvetica", style, max(7.4, size * scale))
         pdf.set_x(_M)
-        pdf.multi_cell(W, h * scale, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.multi_cell(W, h * scale, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT,
+                       link=link or "")
         if gap:
             pdf.ln(gap * scale)
+
+    def link_over(prefix, target, size, y, h):
+        """Rend cliquable une portion de ligne déjà écrite (l'e-mail dans la ligne
+        de contact) : on mesure la largeur du texte pour poser l'annotation dessus."""
+        if not target:
+            return
+        pdf.set_font("Helvetica", "", max(7.4, size * scale))
+        x0 = _M + pdf.get_string_width(_latin(prefix))
+        pdf.link(x0, y, pdf.get_string_width(_latin(target)), h * scale,
+                 _href(target) or "")
 
     def heading(txt):
         pdf.ln(2.0 * scale)
@@ -354,10 +395,12 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str, scale: float = 1.0) -> bytes:
     c = s.get("contact") or {}
     inline = _clean([c.get("email"), c.get("phone"), c.get("location")])
     if inline:
+        y = pdf.get_y()
         line(" | ".join(str(x) for x in inline), size=9)
+        link_over("", str(c.get("email") or ""), 9, y, 4.1)   # e-mail cliquable
     for key in ("linkedin", "github", "portfolio"):     # un lien par ligne : jamais recollés
         if c.get(key):
-            line(str(c[key]), size=9)
+            line(str(c[key]), size=9, link=_href(str(c[key])))
 
     if s.get("summary"):
         heading(L["profile"])
@@ -391,7 +434,7 @@ def _cv_pdf_ats(pdf, s: Dict, lg: str, scale: float = 1.0) -> bytes:
             if meta:
                 line(meta, size=8.8)
             for b in _clean(e.get("bullets"))[:8]:
-                line("- " + str(b), h=3.95)
+                line("- " + str(b), h=3.95, link=_href(str(b)))
             pdf.ln(0.9)
 
     edu = _clean(s.get("education"))

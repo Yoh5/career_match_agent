@@ -10,6 +10,8 @@ Règle d'intégrité NON négociable, rappelée dans chaque prompt : **ne rien
 inventer** — on ne fait que réorganiser, reformuler et mettre en avant ce qui
 existe déjà dans le CV de base.
 """
+import re
+
 from core import llm, ats, quality
 
 _NO_FABRICATION = {
@@ -235,14 +237,17 @@ def cv_to_structured(cv_markdown: str, lang: str = "fr") -> tuple:
         prompt = (
             "Convert this Markdown CV into structured JSON for a designed HTML layout. "
             "ONLY reorganise the existing content — invent nothing, drop nothing important. "
-            "Leave a field empty if absent. Keep bullets concise.\n"
+            "Leave a field empty if absent. Keep bullets concise, but KEEP EVERY URL "
+            "(repository, portfolio, profile) verbatim, in the entry it belongs to.\n"
             f"Return ONLY JSON matching this schema: {schema}\n\n=== CV (Markdown) ===\n{cv_markdown[:6000]}"
         )
     else:
         prompt = (
             "Convertis ce CV Markdown en JSON structuré pour une mise en page HTML soignée. "
             "RÉORGANISE uniquement le contenu existant — n'invente rien, ne supprime rien "
-            "d'important. Laisse un champ vide s'il est absent. Puces concises.\n"
+            "d'important. Laisse un champ vide s'il est absent. Puces concises, mais CONSERVE "
+            "TOUTES LES URL (dépôt, portfolio, profil) à l'identique, dans l'entrée à laquelle "
+            "elles appartiennent.\n"
             f"Réponds UNIQUEMENT en JSON suivant ce schéma : {schema}\n\n=== CV (Markdown) ===\n{cv_markdown[:6000]}"
         )
     raw, err = llm.complete(prompt, json_mode=True, max_tokens=1800)
@@ -251,7 +256,60 @@ def cv_to_structured(cv_markdown: str, lang: str = "fr") -> tuple:
     data = llm.parse_json(raw)
     if not isinstance(data, dict):
         return None, "Réponse LLM illisible"
-    return data, None
+    return restore_links(data, cv_markdown), None
+
+
+# URL telles qu'on les écrit dans un CV : avec ou sans schéma.
+_URL_RE = re.compile(
+    r"(?:https?://|www\.)[^\s)\]]+"
+    r"|(?:[\w-]+\.)+(?:com|io|dev|net|org|ai|app|fr|ma|co)(?:/[^\s)\],]*)?",
+    re.IGNORECASE)
+_MD_TITLE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def restore_links(structured: dict, cv_markdown: str) -> dict:
+    """Réinjecte les URL du CV source que la structuration LLM a laissées tomber.
+
+    `cv_to_structured` est un appel LLM : d'un run à l'autre, il lui arrive de
+    supprimer les liens de dépôt en « condensant » les puces. Un CV d'ingénieur
+    sans le lien de ses projets perd sa preuve — donc on vérifie, sans LLM, que
+    chaque URL du texte source se retrouve bien dans le JSON, et on la rattache
+    à l'entrée à laquelle elle appartient (le titre en gras le plus proche
+    au-dessus d'elle dans le Markdown)."""
+    if not isinstance(structured, dict) or not cv_markdown:
+        return structured
+    import json as _json
+    dumped = _json.dumps(structured, ensure_ascii=False).lower()
+    entries = [e for key in ("projects", "experiences")
+               for e in (structured.get(key) or []) if isinstance(e, dict)]
+    if not entries:
+        return structured
+
+    lines = cv_markdown.splitlines()
+    for i, raw_line in enumerate(lines):
+        for url in _URL_RE.findall(raw_line):
+            url = url.rstrip(".,;)")
+            if url.lower() in dumped:
+                continue                       # déjà présent : rien à faire
+            title = ""                         # titre en gras le plus proche au-dessus
+            for j in range(i, max(-1, i - 12), -1):
+                m = _MD_TITLE.search(lines[j])
+                if m:
+                    title = m.group(1)
+                    break
+            target = None
+            for e in entries:
+                t = str(e.get("title") or "").strip().lower()
+                if t and title and (t in title.lower() or title.lower().startswith(t[:20])):
+                    target = e
+                    break
+            if target is None:
+                continue                       # pas d'entrée identifiable : on n'invente pas
+            bullets = target.setdefault("bullets", [])
+            if isinstance(bullets, list):
+                bullets.append(url)
+                dumped += " " + url.lower()
+    return structured
 
 
 def recommend(analysis: dict, ats_cov: dict, lang: str = "fr", memory_note: str = "") -> tuple:
