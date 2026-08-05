@@ -486,7 +486,7 @@ def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
     seen = set()
 
     for i in range(max(1, max_iters) + 1):
-        cov = ats.coverage(current, keywords)               # UNE seule mesure : pct + missing
+        cov = ats.coverage(current, keywords, offer_text)   # UNE mesure : pct, pondéré, manquants
         pct = cov["pct"]
         q = quality.score(current, lg, "cv")                # qualité déterministe
         grounding, _gerr = verify_grounding(current, cv_text, lang)   # fail-open
@@ -494,8 +494,8 @@ def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
 
         if ats_start is None:
             ats_start, q_start = pct, q["score"]
-        iterations.append({"iter": i, "ats": pct, "quality": q["score"],
-                           "unsupported": len(unsupported)})
+        iterations.append({"iter": i, "ats": pct, "ats_weighted": cov["weighted_pct"],
+                           "quality": q["score"], "unsupported": len(unsupported)})
 
         key = _cv_key(unsupported, pct, q["score"])
         if best_key is None or key > best_key:
@@ -506,7 +506,10 @@ def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
         if i >= max_iters:
             break                                           # budget épuisé
 
-        revised, rerr = _revise_cv(current, cv_text, offer_text, cov["missing"],
+        # Les manquants ÉLIMINATOIRES d'abord : la liste est tronquée à 20 dans le
+        # prompt, autant que ce soit par ce qui fait recaler et pas par un bonus.
+        missing = cov["critical_missing"] + [k for k in cov["missing"] if k not in cov["critical_missing"]]
+        revised, rerr = _revise_cv(current, cv_text, offer_text, missing,
                                    unsupported, lang, q["issues"])
         if rerr or not revised:
             break                                           # révision indispo → on garde le meilleur
@@ -521,10 +524,14 @@ def optimize_cv(cv_text: str, offer_text: str, lang: str = "fr",
     final, q_final, polished_unsup = _polish(best, cv_text, lg, "cv", quality_target)
     if polished_unsup is not None:
         best_unsup = polished_unsup
+    cov_final = ats.coverage(final, keywords, offer_text)
     return {
         "cv_markdown": final,
         "ats_start": ats_start,
-        "ats_final": ats.coverage(final, keywords)["pct"],
+        "ats_final": cov_final["pct"],
+        "ats_weighted_final": cov_final["weighted_pct"],
+        "critical_missing": cov_final["critical_missing"],
+        "keywords": keywords,               # réutilisés pour l'audit de parsing du PDF
         "iterations": iterations,
         "unsupported_final": best_unsup or [],
         "quality_start": q_start,

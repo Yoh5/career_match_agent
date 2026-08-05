@@ -3,8 +3,20 @@
 - Lettre → Word via python-docx (déjà utilisé pour LIRE les CV) : marges A4,
   interligne aéré, prête à personnaliser/envoyer.
 - CV → PDF via fpdf2 (pur Python, zéro dépendance système — là où career-ops
-  passe par Playwright/Chromium). Mise en page 2 colonnes reconstruite depuis le
-  JSON structuré (`agent.cv_to_structured`) ; repli simple si structuré absent.
+  passe par Playwright/Chromium).
+
+**Deux mises en page, pour deux lecteurs différents :**
+
+| `layout` | Pour qui | Forme |
+|---|---|---|
+| `"ats"` (défaut) | le robot de tri | **une seule colonne**, sections standard, noir sur blanc, puces `-` |
+| `"designed"` | l'œil humain | 2 colonnes, bandeau couleur, barre latérale compétences |
+
+C'est une distinction qui compte : un PDF à deux colonnes est extrait par les
+parseurs ATS dans l'ordre du flux de texte, ce qui **entrelace la barre latérale
+avec le corps du CV** et peut coller « Docker » au milieu d'une phrase sur un
+stage. Tant que le CV passe par un ATS, la version une colonne est celle qu'il
+faut envoyer — `atscheck.py` mesure précisément ce que chaque version perd.
 
 Tout retourne des bytes ; aucune écriture disque, aucune dépendance réseau.
 """
@@ -25,6 +37,18 @@ _LABELS = {
     "en": {"profile": "Profile", "experience": "Experience", "projects": "Projects",
            "education": "Education", "skills": "Skills", "certs": "Certifications",
            "langs": "Languages", "links": "Links"},
+}
+
+# Intitulés de section de la mise en page ATS : les libellés CANONIQUES que les
+# parseurs cherchent pour découper un CV. « Expérience professionnelle » est
+# reconnu, « Mon parcours » ne l'est pas — d'où des titres volontairement plats.
+_ATS_LABELS = {
+    "fr": {"profile": "PROFIL", "experience": "EXPÉRIENCE PROFESSIONNELLE",
+           "projects": "PROJETS", "education": "FORMATION", "skills": "COMPÉTENCES",
+           "certs": "CERTIFICATIONS", "langs": "LANGUES"},
+    "en": {"profile": "PROFESSIONAL SUMMARY", "experience": "PROFESSIONAL EXPERIENCE",
+           "projects": "PROJECTS", "education": "EDUCATION", "skills": "SKILLS",
+           "certs": "CERTIFICATIONS", "langs": "LANGUAGES"},
 }
 
 
@@ -138,13 +162,21 @@ def _clean(items) -> List:
     return [x for x in (items or []) if x]
 
 
-def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr") -> bytes:
-    """CV PDF A4. Avec `structured` → 2 colonnes (bandeau, profil/expériences/projets
-    à gauche ; compétences/formation/certifs/langues à droite). Sinon → repli
-    simple 1 colonne depuis le Markdown."""
+def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
+           layout: str = "ats") -> bytes:
+    """CV PDF A4.
+
+    - `layout="ats"` (défaut) → **une colonne**, sections standard, monochrome :
+      la version à envoyer dès qu'un robot lit le CV.
+    - `layout="designed"` → 2 colonnes (bandeau, profil/expériences/projets à
+      gauche ; compétences/formation/certifs/langues à droite) : jolie, mais son
+      ordre de lecture est illisible pour une partie des parseurs.
+
+    Sans `structured`, les deux retombent sur le rendu Markdown une colonne."""
     from fpdf import FPDF
 
-    L = _LABELS.get("en" if str(lang).lower().startswith("en") else "fr", _LABELS["fr"])
+    lg = "en" if str(lang).lower().startswith("en") else "fr"
+    L = _LABELS[lg]
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(False)
     pdf.set_margins(_M, _M, _M)
@@ -152,6 +184,9 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr") 
 
     if not isinstance(structured, dict) or not structured.get("name"):
         return _cv_pdf_fallback(pdf, cv_markdown)
+
+    if str(layout).lower() != "designed":
+        return _cv_pdf_ats(pdf, structured, lg)
 
     # ── Bandeau d'en-tête ──
     contact = structured.get("contact") or {}
@@ -231,6 +266,105 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr") 
         side.heading(L["links"])
         for u in links:
             side.text(str(u), size=8.0, color=_ACCENT)
+
+    return bytes(pdf.output())
+
+
+def _cv_pdf_ats(pdf, s: Dict, lg: str) -> bytes:
+    """Mise en page UNE COLONNE, pensée pour être ré-extraite proprement.
+
+    Les choix ici sont tous dictés par le parsing, pas par l'esthétique :
+    flux de texte unique (pas de colonne latérale à entrelacer), intitulés de
+    section canoniques, coordonnées en clair sur les premières lignes, puces
+    écrites « - » DANS la chaîne (une puce dessinée en cellule séparée ressort
+    détachée de son texte à l'extraction), aucun aplat de couleur."""
+    from fpdf.enums import XPos, YPos
+
+    L = _ATS_LABELS[lg]
+    W = _PAGE_W - 2 * _M
+    pdf.set_auto_page_break(True, margin=_M)
+    pdf.set_text_color(*_INK)
+
+    def line(txt, size=9.4, style="", h=4.5, gap=0.0):
+        txt = _latin(txt).strip()
+        if not txt:
+            return
+        pdf.set_font("Helvetica", style, size)
+        pdf.set_x(_M)
+        pdf.multi_cell(W, h, txt, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        if gap:
+            pdf.ln(gap)
+
+    def heading(txt):
+        pdf.ln(2.6)
+        line(txt, size=10.2, style="B", h=5)
+        pdf.set_draw_color(*_LINE)
+        pdf.line(_M, pdf.get_y() + 0.2, _M + W, pdf.get_y() + 0.2)
+        pdf.ln(1.6)
+
+    # ── En-tête : nom, titre, coordonnées en texte brut ──
+    line(s.get("name") or "", size=17, style="B", h=8)
+    line(s.get("role") or "", size=11, h=5.5)
+    c = s.get("contact") or {}
+    inline = _clean([c.get("email"), c.get("phone"), c.get("location")])
+    if inline:
+        line(" | ".join(str(x) for x in inline), size=9)
+    for key in ("linkedin", "github", "portfolio"):     # un lien par ligne : jamais recollés
+        if c.get(key):
+            line(str(c[key]), size=9)
+
+    if s.get("summary"):
+        heading(L["profile"])
+        line(str(s["summary"]))
+
+    # Compétences juste après le profil : les ATS pondèrent ce qui apparaît tôt.
+    skills = _clean(s.get("skills"))
+    if skills:
+        heading(L["skills"])
+        for g in skills:
+            if isinstance(g, dict):
+                items = ", ".join(str(i) for i in _clean(g.get("items")))
+                grp = str(g.get("group") or "").strip()
+                line(f"{grp} : {items}" if grp and items else (items or grp))
+            else:
+                line(str(g))
+
+    for key, label in (("experiences", L["experience"]), ("projects", L["projects"])):
+        entries = _clean(s.get(key))
+        if not entries:
+            continue
+        heading(label)
+        for e in entries:
+            if not isinstance(e, dict):
+                line("- " + str(e))
+                continue
+            title = str(e.get("title") or "").strip()
+            org = str(e.get("org") or e.get("meta") or "").strip()
+            line(f"{title} - {org}" if org and title else (title or org), style="B", gap=0.3)
+            meta = " | ".join(_clean([e.get("date"), e.get("stack")]))
+            if meta:
+                line(meta, size=8.8)
+            for b in _clean(e.get("bullets"))[:8]:
+                line("- " + str(b), h=4.3)
+            pdf.ln(1.2)
+
+    edu = _clean(s.get("education"))
+    if edu:
+        heading(L["education"])
+        for e in edu:
+            if isinstance(e, dict):
+                line(str(e.get("title") or ""), style="B")
+                if e.get("meta"):
+                    line(str(e["meta"]), size=8.8)
+            else:
+                line(str(e))
+
+    for key, label in (("certifications", L["certs"]), ("languages", L["langs"])):
+        entries = _clean(s.get(key))
+        if entries:
+            heading(label)
+            for e in entries:
+                line("- " + str(e), h=4.3)
 
     return bytes(pdf.output())
 

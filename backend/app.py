@@ -25,7 +25,7 @@ Sert aussi le frontend statique à la racine.
 """
 import os
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
@@ -45,7 +45,8 @@ try:
 except ImportError:
     pass
 
-from core import llm, ats, extract, agent, memory, orchestrator, render, sources, pipeline, templates, export
+from core import (llm, ats, extract, agent, memory, orchestrator, render, sources, pipeline,
+                  templates, export, atscheck)
 
 app = FastAPI(title="Career Match Agent")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -75,9 +76,17 @@ async def extract_cv(file: UploadFile = File(...)):
     text, err = extract.extract_cv_text(file.filename, data)
     if err:
         raise HTTPException(400, err)
+    # Certains PDF (exports Canva/Figma) ressortent lettre par lettre : sans cette
+    # réparation, TOUT le reste de la chaîne raisonne sur du bruit.
+    notes = []
+    text, repaired = atscheck.repair_char_spacing(text or "")
+    if repaired:
+        notes.append("Ton PDF ressort lettre par lettre à l'extraction : je l'ai recollé pour "
+                     "travailler dessus, mais un ATS, lui, ne le fera pas. Lance l'audit de "
+                     "parsing pour voir les dégâts.")
     if len((text or "").strip()) < 30:
         raise HTTPException(422, "CV vide ou illisible (PDF scanné en image ?). Essaie un .txt/.md ou un PDF texte.")
-    return {"filename": file.filename, "cv_text": text, "chars": len(text)}
+    return {"filename": file.filename, "cv_text": text, "chars": len(text), "notes": notes}
 
 
 class OfferBody(BaseModel):
@@ -172,6 +181,21 @@ def do_cover_letter(body: OfferBody):
     }
 
 
+def _parse_report(structured, cv_markdown: str, lang: str, keywords, offer_text: str = "") -> dict:
+    """Audit de parsing du PDF RÉELLEMENT téléchargeable (mise en page ATS).
+
+    Le contrôle qui manquait : jusqu'ici on optimisait le Markdown, et personne ne
+    vérifiait que le PDF déposé sur le portail restituait bien ce texte. Fail-open :
+    si le rendu échoue, la génération n'échoue pas pour autant."""
+    try:
+        pdf = export.cv_pdf(structured, cv_markdown or "", lang, layout="ats")
+        rep = atscheck.audit(pdf, keywords or None, cv_markdown or "", offer_text)
+        rep.pop("text", None)
+        return rep
+    except Exception as e:                       # pragma: no cover - garde-fou
+        return {"score": None, "error": str(e), "issues": []}
+
+
 @app.post("/tailored-cv")
 def do_tailored_cv(body: OfferBody):
     """Boucle agentique : génère → mesure ATS → vérifie l'intégrité → révise,
@@ -187,8 +211,11 @@ def do_tailored_cv(body: OfferBody):
         "tailored_cv_markdown": md,
         "tailored_cv_html": render.cv_html(md, structured, body.lang),
         "cv_structured": structured,               # pour l'export PDF sans rappel LLM
+        "ats_parse": _parse_report(structured, md, body.lang, result.get("keywords"), offer),
         "ats_start": result["ats_start"],
         "ats_final": result["ats_final"],
+        "ats_weighted_final": result.get("ats_weighted_final"),
+        "critical_missing": result.get("critical_missing", []),
         "iterations": result["iterations"],
         "unsupported_final": result["unsupported_final"],
         "quality_start": result["quality_start"],
@@ -219,19 +246,79 @@ class CvExportBody(BaseModel):
     cv_markdown: str
     cv_structured: Optional[dict] = None   # renvoyé par /tailored-cv ou /prepare
     lang: str = "fr"
+    layout: str = "ats"                    # "ats" (1 colonne, à envoyer) | "designed" (2 colonnes)
 
 
 @app.post("/export/cv.pdf")
 def do_export_cv(body: CvExportBody):
-    """CV adapté (Markdown + JSON structuré éventuel) → PDF 2 colonnes téléchargeable."""
+    """CV adapté (Markdown + JSON structuré éventuel) → PDF téléchargeable.
+
+    `layout="ats"` (défaut) = une colonne, la version qui traverse les robots ;
+    `layout="designed"` = 2 colonnes, pour un envoi direct à un humain."""
     has_structured = isinstance(body.cv_structured, dict) and (body.cv_structured.get("name") or "").strip()
     if not has_structured and len((body.cv_markdown or "").strip()) < 10:
         raise HTTPException(422, "CV vide — génère-le d'abord.")
+    designed = str(body.layout).lower() == "designed"
     return Response(
-        content=export.cv_pdf(body.cv_structured, body.cv_markdown, body.lang),
+        content=export.cv_pdf(body.cv_structured, body.cv_markdown, body.lang, layout=body.layout),
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="CV_adapte.pdf"'},
+        headers={"Content-Disposition":
+                 f'attachment; filename="CV_adapte{"_design" if designed else "_ATS"}.pdf"'},
     )
+
+
+# ── Audit de parsing ATS : ce que le robot lit vraiment dans le PDF ──────────
+
+@app.post("/ats-check")
+async def do_ats_check(file: UploadFile = File(...), offer_text: str = Form(""),
+                       lang: str = Form("fr")):
+    """Passe un PDF de CV (le TIEN, pas seulement ceux générés ici) dans les
+    extracteurs qu'utilisent les ATS et renvoie ce qui survit : score de parsing,
+    coordonnées retrouvées, sections identifiées, mots-clés matchables.
+
+    Aucune clé LLM requise sans offre. Avec `offer_text` et une clé, les mots-clés
+    de l'offre sont extraits puis mesurés sur le texte RÉ-EXTRAIT du PDF."""
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(413, "Fichier trop volumineux (max 10 Mo)")
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(400, "Envoie un PDF — c'est le format déposé sur les portails.")
+
+    keywords = []
+    offer = (offer_text or "").strip()
+    if len(offer) >= 30:
+        extra = []
+        if llm.is_enabled():
+            extra, _ = agent.offer_keywords(offer, lang)     # fail-open
+        keywords = ats.extract_keywords(offer, extra=extra)
+
+    report = atscheck.audit(data, keywords or None, offer_text=offer)
+    report.pop("text", None)                                  # réponse compacte
+    return {"filename": file.filename, "report": report}
+
+
+class AtsCheckTextBody(BaseModel):
+    cv_markdown: str = ""
+    cv_structured: Optional[dict] = None
+    lang: str = "fr"
+    offer_text: str = ""
+    keywords: list[str] = []
+
+
+@app.post("/ats-check/compare")
+def do_ats_compare(body: AtsCheckTextBody):
+    """Rend le CV adapté dans les DEUX mises en page et audite chacune : preuve
+    chiffrée de ce que la version 2 colonnes coûte (ou non) sur CE CV-là."""
+    if not (body.cv_markdown or "").strip() and not isinstance(body.cv_structured, dict):
+        raise HTTPException(422, "CV vide — génère-le d'abord.")
+    kws = list(body.keywords or [])
+    if not kws and len((body.offer_text or "").strip()) >= 30:
+        extra = []
+        if llm.is_enabled():
+            extra, _ = agent.offer_keywords(body.offer_text, body.lang)
+        kws = ats.extract_keywords(body.offer_text, extra=extra)
+    return atscheck.compare_layouts(body.cv_structured, body.cv_markdown, body.lang,
+                                    kws or None, body.offer_text or "")
 
 
 # ═══ Pipeline de stages : sourcing → analyse → dossier prêt → envoi (à toi) ═══
@@ -389,6 +476,9 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
         "cover_letter_error": lerr or "",
         "messages": messages,
         "ats_start": result["ats_start"], "ats_final": result["ats_final"],
+        "ats_weighted_final": result.get("ats_weighted_final"),
+        "critical_missing": result.get("critical_missing", []),
+        "ats_parse": _parse_report(structured, md, body.lang, result.get("keywords"), offer),
         "unsupported_final": result["unsupported_final"],
         "quality_start": result["quality_start"], "quality_final": result["quality_final"],
         "letter_quality": (lres or {}).get("quality_final"),
@@ -451,12 +541,16 @@ def do_letter_docx(item_id: str):
 
 
 @app.get("/pipeline/{item_id}/cv.pdf")
-def do_cv_pdf(item_id: str):
+def do_cv_pdf(item_id: str, layout: str = "ats"):
+    """CV du dossier en PDF. `?layout=designed` pour la version 2 colonnes ;
+    par défaut la version une colonne, celle qui passe les robots."""
     d = _prepared_or_422(item_id)
     p = d["prepared"]
     if not (p.get("cv_markdown") or "").strip():
         raise HTTPException(422, "Pas de CV adapté dans ce dossier.")
-    data = export.cv_pdf(p.get("cv_structured"), p.get("cv_markdown") or "", p.get("lang") or "fr")
-    name = f"CV_{(d['item'].get('company') or 'offre').replace(' ', '_')}.pdf"
+    data = export.cv_pdf(p.get("cv_structured"), p.get("cv_markdown") or "",
+                         p.get("lang") or "fr", layout=layout)
+    suffix = "design" if str(layout).lower() == "designed" else "ATS"
+    name = f"CV_{(d['item'].get('company') or 'offre').replace(' ', '_')}_{suffix}.pdf"
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})

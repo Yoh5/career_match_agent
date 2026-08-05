@@ -104,3 +104,99 @@ def test_resolve_rejects_short_cv(monkeypatch):
     _enable_llm(monkeypatch)
     r = client.post("/analyze", json={"cv_text": "court", "offer_text": _OFFER})
     assert r.status_code == 422
+
+
+# ── Audit de parsing ATS ────────────────────────────────────────────────────
+
+_STRUCTURED = {
+    "name": "Axel AHO", "role": "AI / Agent Engineer",
+    "contact": {"email": "aho.axel5@gmail.com", "phone": "+212 777076845", "location": "Casablanca"},
+    "summary": "Élève ingénieur IA, agents LLM en production, Python et FastAPI, "
+               "déploiement continu et supervision des traitements.",
+    "experiences": [{"title": "AI Engineer", "org": "Holokia", "date": "2025 - 2026",
+                     "stack": "Python, FastAPI",
+                     "bullets": ["Agent d'entretien RH autonome déployé en production",
+                                 "Notation déterministe et indice d'intégrité"]}],
+    "education": [{"title": "Cycle ingénieur IA", "meta": "HESTIM 2025 - 2028"}],
+    "skills": [{"group": "Backend", "items": ["Python", "FastAPI", "Docker"]}],
+}
+
+
+def test_extract_cv_repairs_and_warns_on_letter_by_letter_pdf():
+    """Un PDF extrait lettre par lettre est recollé, et l'utilisateur est prévenu."""
+    from core import atscheck
+    broken = ("D é v e l o p p e m e n t  d ' a g e n t s  L L M\n"
+              "P y t h o n  F a s t A P I  D o c k e r\n") * 6
+    fixed, repaired = atscheck.repair_char_spacing(broken)
+    assert repaired and "Python FastAPI Docker" in fixed
+    r = client.post("/extract-cv", files={"file": ("cv.txt", broken.encode("utf-8"), "text/plain")})
+    d = r.json()
+    assert "Développement d'agents LLM" in d["cv_text"]
+    assert d["notes"] and "lettre par lettre" in d["notes"][0]
+
+
+def test_extract_cv_leaves_a_healthy_cv_untouched():
+    r = client.post("/extract-cv", files={"file": ("cv.txt", _CV.encode("utf-8"), "text/plain")})
+    assert r.json()["notes"] == []
+
+
+def test_ats_check_rejects_non_pdf():
+    r = client.post("/ats-check", files={"file": ("cv.txt", b"pas un pdf", "text/plain")})
+    assert r.status_code == 400
+
+
+def test_ats_check_reports_on_a_real_pdf():
+    """Le CV généré par l'app doit passer son propre audit — sans clé LLM."""
+    from core import export
+    pdf = export.cv_pdf(_STRUCTURED, "", "fr", layout="ats")
+    r = client.post("/ats-check", files={"file": ("cv.pdf", pdf, "application/pdf")})
+    assert r.status_code == 200
+    rep = r.json()["report"]
+    assert rep["score"] >= 80
+    assert rep["contact"]["email"] == "aho.axel5@gmail.com"
+    assert "text" not in rep                      # réponse compacte
+
+
+def test_ats_check_flags_an_unreadable_pdf():
+    from fpdf import FPDF
+    pdf = FPDF()
+    pdf.add_page()
+    r = client.post("/ats-check", files={"file": ("vide.pdf", bytes(pdf.output()), "application/pdf")})
+    rep = r.json()["report"]
+    assert rep["score"] == 0
+    assert any(i["type"] == "not_extractable" for i in rep["issues"])
+
+
+def test_ats_compare_returns_both_layouts():
+    r = client.post("/ats-check/compare", json={"cv_markdown": "# Axel AHO",
+                                                "cv_structured": _STRUCTURED, "lang": "fr"})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["recommended"] in ("ats", "designed")
+    assert d["ats"]["score"] and d["designed"]["score"]
+
+
+def test_export_cv_pdf_defaults_to_the_ats_layout():
+    r = client.post("/export/cv.pdf", json={"cv_markdown": "# Axel AHO\n## Compétences\n- Python",
+                                            "cv_structured": _STRUCTURED, "lang": "fr"})
+    assert r.status_code == 200 and r.content[:5] == b"%PDF-"
+    assert "_ATS.pdf" in r.headers["content-disposition"]
+    r2 = client.post("/export/cv.pdf", json={"cv_markdown": "# Axel AHO",
+                                             "cv_structured": _STRUCTURED, "layout": "designed"})
+    assert "_design.pdf" in r2.headers["content-disposition"]
+    assert r2.content != r.content
+
+
+def test_tailored_cv_includes_the_parse_report(monkeypatch):
+    """Le contrôle de bout en bout : le PDF réellement téléchargeable est audité."""
+    _enable_llm(monkeypatch)
+    monkeypatch.setattr(appmod.agent, "optimize_cv", lambda *a, **k: (
+        {"cv_markdown": "# Axel AHO\n## Compétences\n- Python", "ats_start": 60, "ats_final": 90,
+         "ats_weighted_final": 93, "critical_missing": [], "keywords": ["python", "fastapi"],
+         "iterations": [{}], "unsupported_final": [],
+         "quality_start": 90, "quality_final": 98, "quality_issues": []}, None))
+    monkeypatch.setattr(appmod.agent, "cv_to_structured", lambda *a, **k: (_STRUCTURED, None))
+    d = client.post("/tailored-cv", json={"cv_text": _CV, "offer_text": _OFFER}).json()
+    assert d["ats_weighted_final"] == 93
+    assert d["ats_parse"]["score"] >= 80
+    assert d["ats_parse"]["keyword_loss"] == []

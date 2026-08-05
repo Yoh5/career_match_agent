@@ -294,6 +294,11 @@
       </div>
       <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md">
     </label>
+    <div id="atsAuditBar" style="margin-top:10px;display:none;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-s" id="btnAtsAudit" title="Ré-extrait ton PDF comme le font les ATS et mesure ce qui survit">🔬 Auditer le parsing ATS de ce PDF</button>
+      <span class="muted" style="font-size:13px">Ce que le robot lit vraiment dans ton fichier — avant même de parler du contenu.</span>
+    </div>
+    <div id="atsAuditOut" class="hidden" style="margin-top:10px"></div>
   </div>
 
   <!-- 2. Offre + options -->
@@ -349,7 +354,8 @@
         <button class="btn btn-g hidden" id="btnHtml">⬇️ HTML</button>
         <button class="btn btn-g hidden" id="btnPrint">🖨️ Imprimer / PDF</button>
         <button class="btn btn-g hidden" id="btnDocx">⬇️ Lettre (Word)</button>
-        <button class="btn btn-g hidden" id="btnPdf">⬇️ CV (PDF)</button>
+        <button class="btn btn-g hidden" id="btnPdf" title="Une colonne, sections standard — la version à déposer sur un portail">⬇️ CV (PDF ATS)</button>
+        <button class="btn btn-g hidden" id="btnPdfDesign" title="Deux colonnes, mise en page soignée — pour un envoi direct à un humain">⬇️ CV (PDF design)</button>
       </div>
     </div>
     <div id="outMeta" class="hidden"></div>
@@ -460,10 +466,14 @@ function body(){ return {cv_text:cvText, offer_text:$("offerText").value, offer_
 function busy(btn,on,label){ btn.disabled=on; btn.innerHTML = on ? '<span class="spin"></span> '+label : btn.dataset.label; }
 
 // CV upload
+let cvFileRef = null;                     // gardé pour l'audit de parsing (PDF uniquement)
 $("cvFile").addEventListener("change", async e=>{
   const f = e.target.files[0]; if(!f) return;
   $("cvDrop").classList.remove("loaded");
   $("cvStatus").className="status"; $("cvStatus").textContent="Lecture…";
+  $("atsAuditOut").className="hidden";
+  cvFileRef = /\.pdf$/i.test(f.name) ? f : null;      // l'audit de parsing n'a de sens que sur un PDF
+  $("atsAuditBar").style.display = cvFileRef ? "flex" : "none";
   try{
     const fd = new FormData(); fd.append("file", f);
     const r = await fetch(API+"/extract-cv",{method:"POST",body:fd});
@@ -471,9 +481,56 @@ $("cvFile").addEventListener("change", async e=>{
     cvText = d.cv_text;
     $("cvDrop").classList.add("loaded");
     $("cvStatus").className="status ok"; $("cvStatus").textContent="✓ "+d.filename+" ("+d.chars+" caractères)";
+    if((d.notes||[]).length){    // ex. : PDF extrait lettre par lettre, recollé côté serveur
+      $("atsAuditOut").className="status err";
+      $("atsAuditOut").textContent="⚠️ "+d.notes.join(" ");
+      $("atsAuditOut").classList.remove("hidden");
+    }
     markStep("step1", true);
   }catch(err){ $("cvStatus").className="status err"; $("cvStatus").textContent="✗ "+err.message; markStep("step1", false); }
 });
+
+/* Audit de parsing ATS du PDF déposé : ce que le robot lit avant tout jugement
+   sur le contenu. Aucune clé LLM nécessaire — tout est déterministe. */
+const SEV_ICON = {critical:"⛔", high:"⚠️", medium:"•", low:"·"};
+function renderAudit(rep, into){
+  const box = $(into);
+  if(rep.error){ box.className="status err"; box.textContent="Audit indisponible : "+rep.error; return; }
+  const s = rep.score, cls = s>=80 ? "ok" : (s>=55 ? "" : "err");
+  const eng = Object.entries(rep.engines||{}).map(([k,v]) =>
+    v.unavailable ? esc(k)+" : non installé" : esc(k)+" <b>"+v.score+"/100</b>"+
+      (v.char_spacing>=0.18 ? " (texte éclaté)" : "")).join(" · ");
+  const issues = (rep.issues||[]).map(i =>
+    '<li>'+(SEV_ICON[i.severity]||"·")+' '+esc(i.detail||i.type)+'</li>').join("");
+  box.className = "trace";
+  box.style.flexWrap = "wrap";
+  box.innerHTML =
+    '<div style="width:100%"><b style="font-size:15px">Parsing ATS : '+s+'/100</b>'+
+      (cls==="ok" ? " ✅" : (cls==="err" ? " — ton CV risque d'être illisible pour le robot" : " — perfectible"))+'</div>'+
+    '<div style="width:100%;color:var(--muted);font-size:13px">'+
+      'Par extracteur : '+(eng||"—")+' · score retenu = le pire, on ne choisit pas le parseur du recruteur.</div>'+
+    '<div style="width:100%;color:var(--muted);font-size:13px">'+
+      'E-mail lu : <b>'+esc(rep.contact?.email || "aucun")+'</b> · téléphone : <b>'+
+      esc(rep.contact?.phone || "aucun")+'</b> · sections : <b>'+
+      esc((rep.sections?.found||[]).join(", ") || "aucune")+'</b> · '+rep.words+' mots, '+rep.pages+' page(s)</div>'+
+    (issues ? '<ul style="width:100%;margin:6px 0 0 18px;font-size:13px">'+issues+'</ul>' : '');
+  box.classList.remove("hidden");
+}
+$("btnAtsAudit").dataset.label = $("btnAtsAudit").innerHTML;
+$("btnAtsAudit").onclick = async ()=>{
+  if(!cvFileRef) return;
+  busy($("btnAtsAudit"), true, "Extraction…");
+  try{
+    const fd = new FormData();
+    fd.append("file", cvFileRef);
+    fd.append("offer_text", $("offerText").value || "");
+    fd.append("lang", $("lang").value);
+    const r = await fetch(API+"/ats-check", {method:"POST", body:fd});
+    const d = await r.json(); if(!r.ok) throw new Error(d.detail||"Erreur");
+    renderAudit(d.report, "atsAuditOut");
+  }catch(err){ $("atsAuditOut").className="status err"; $("atsAuditOut").textContent="✗ "+err.message; }
+  finally{ busy($("btnAtsAudit"), false); }
+};
 
 // Offre → étape 2
 $("offerText").addEventListener("input", ()=>markStep("step2", $("offerText").value.trim().length>0 || $("offerUrl").value.trim().length>0));
@@ -524,7 +581,8 @@ function renderReco(rec){
 function showTrace(d){
   const bits = [];
   if(d.ats_final !== undefined && d.ats_final !== null)
-    bits.push("couverture ATS <b>"+d.ats_start+"% → "+d.ats_final+"%</b>");
+    bits.push("couverture ATS <b>"+d.ats_start+"% → "+d.ats_final+"%</b>" +
+      (d.ats_weighted_final!=null ? " (pondérée "+d.ats_weighted_final+"%)" : ""));
   if(d.quality_final !== undefined && d.quality_final !== null)
     bits.push("qualité rédactionnelle <b>"+d.quality_start+" → "+d.quality_final+"/100</b>");
   if(!bits.length){ $("outMeta").className="hidden"; $("outMeta").innerHTML=""; return; }
@@ -534,6 +592,22 @@ function showTrace(d){
   let html = "🤖 <span>Boucle agentique :</span> " + bits.join(" · ") +
     (iters ? " en "+iters+" itération(s)" : "") + " · " +
     (inv===0 ? "<b>0 invention ✓</b>" : inv+" à vérifier");
+  // Contrôle de bout en bout : ce que le PDF téléchargeable restitue réellement
+  const p = d.ats_parse;
+  if(p && p.score != null){
+    html += '<div style="width:100%;margin-top:5px;font-weight:600">🔬 PDF envoyé : parsing <b>'+
+      p.score+'/100</b>'+((p.keyword_loss||[]).length
+        ? ' — <span style="color:var(--danger,#c0392b)">mots-clés perdus à l\'export : '+
+          esc(p.keyword_loss.slice(0,6).join(", "))+'</span>'
+        : ' · <b>0 mot-clé perdu ✓</b>')+'</div>';
+    // ce qu'il reste à corriger sur le PDF lui-même, pas sur le texte
+    if((p.issues||[]).length)
+      html += '<div style="width:100%;margin-top:3px;font-weight:500;color:var(--muted)">↳ '+
+              esc(p.issues.slice(0,3).map(i=>i.detail||i.type).join(" · "))+'</div>';
+  }
+  if((d.critical_missing||[]).length)
+    html += '<div style="width:100%;margin-top:4px;font-weight:500;color:var(--muted)">⛔ '+
+            'manquants éliminatoires (exigés par l\'offre) : '+esc(d.critical_missing.slice(0,8).join(", "))+'</div>';
   if(issues.length)
     html += '<div style="width:100%;margin-top:5px;font-weight:500;color:var(--muted)">⚠︎ '+
             esc(issues.slice(0,3).map(i=>i.detail||i.type).join(" · "))+'</div>';
@@ -648,7 +722,9 @@ function setExports(ctx){
   exportCtx = ctx || null;
   const c = exportCtx || {};
   $("btnDocx").classList.toggle("hidden", !(c.itemId ? c.hasLetter : !!c.letter));
-  $("btnPdf").classList.toggle("hidden", !(c.itemId ? c.hasCv : !!c.cv_markdown));
+  const hasCv = !!(c.itemId ? c.hasCv : c.cv_markdown);
+  $("btnPdf").classList.toggle("hidden", !hasCv);
+  $("btnPdfDesign").classList.toggle("hidden", !hasCv);
 }
 async function blobDownload(path, body, filename){
   const r = await fetch(API+path, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
@@ -663,14 +739,23 @@ $("btnDocx").onclick = async ()=>{
     else await blobDownload("/export/letter.docx", {text:exportCtx.letter}, "Lettre_motivation.docx");
   }catch(err){ setErr(err.message); }
 };
-$("btnPdf").onclick = async ()=>{
-  if(!exportCtx) return;
-  try{
-    if(exportCtx.itemId) window.location = API+"/pipeline/"+exportCtx.itemId+"/cv.pdf";
-    else await blobDownload("/export/cv.pdf", {cv_markdown:exportCtx.cv_markdown,
-      cv_structured:exportCtx.cv_structured||null, lang:$("lang").value}, "CV_adapte.pdf");
-  }catch(err){ setErr(err.message); }
-};
+/* Deux boutons, deux destinataires : « ATS » = une colonne pour le robot,
+   « design » = deux colonnes pour un humain. Le défaut reste l'ATS. */
+function downloadCv(layout){
+  return async ()=>{
+    if(!exportCtx) return;
+    const suffix = layout==="designed" ? "_design" : "_ATS";
+    try{
+      if(exportCtx.itemId)
+        window.location = API+"/pipeline/"+exportCtx.itemId+"/cv.pdf?layout="+layout;
+      else await blobDownload("/export/cv.pdf", {cv_markdown:exportCtx.cv_markdown,
+        cv_structured:exportCtx.cv_structured||null, lang:$("lang").value, layout},
+        "CV_adapte"+suffix+".pdf");
+    }catch(err){ setErr(err.message); }
+  };
+}
+$("btnPdf").onclick = downloadCv("ats");
+$("btnPdfDesign").onclick = downloadCv("designed");
 function download(content, filename, mime){
   const blob = new Blob([content],{type:mime+";charset=utf-8"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click();

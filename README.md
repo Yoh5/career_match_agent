@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf / python-docx · vanilla-JS frontend · 123 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 166 unit tests (no network, no API key)
 
 ---
 
@@ -21,28 +21,86 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | Capability | Detail |
 |---|---|
 | 📊 **Fit score (0–100)** | LLM assessment + a **deterministic ATS keyword-coverage %** (which offer keywords are/aren't in your CV) — an objective signal, not just vibes. |
+| ⚖️ **Weighted coverage** | Not every keyword is worth the same: a term under *“profil recherché / requirements”* counts **double**, a *“nice to have”* counts **0.6**, and a term repeated three times counts more. You also get `critical_missing` — the misses that actually get you screened out. |
 | 📌 **Projects to highlight** | Which of *your* projects to emphasise **for this specific offer**, and why. |
 | ✎ **CV improvement suggestions** | Concrete, actionable edits (wording, missing keywords, ordering, quantification) to raise the score. |
 | 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (standard sections, exact keywords you truly have). |
-| 📄 **Designed HTML CV** | The tailored CV is rendered as a **professional two-column HTML** (accent header, skills sidebar, A4 print) — the LLM structures your CV into JSON, a fixed template lays it out. One click to **download HTML or print to PDF**; falls back to a clean single-column render. |
+| 🔬 **ATS parse audit** | The check nobody does: the agent **re-extracts the PDF it just produced, exactly as an ATS would**, and reports what survived — keywords lost to the layout, e-mail/phone still findable, sections still identifiable. Works on **your own CV too**, not just generated ones. See below. |
+| 📄 **Two PDF layouts** | **ATS (default)** — single column, canonical headings, monochrome: the one to drop on a portal. **Designed** — two columns with a coloured header, for sending straight to a human. You get both, and the audit tells you what each costs. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
-| ⬇️ **Word & PDF downloads** | Everywhere — single offer *and* pipeline — the cover letter downloads as **.docx** and the tailored CV as a **designed 2-column PDF** (pure Python, no headless browser). |
+| ⬇️ **Word & PDF downloads** | Everywhere — single offer *and* pipeline — the cover letter downloads as **.docx** and the tailored CV as a PDF in **either layout** (pure Python, no headless browser). |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
-| 🛡️ **ATS-optimised** | Plain, keyword-aligned, parsable output — to pass automated screening. |
+| 🛡️ **ATS-optimised — and verified** | Plain, keyword-aligned, parsable output; then the PDF is **re-parsed and scored** to prove it survived the export, instead of taking the layout's word for it. |
 | 🔁 **Agentic optimisation loops** | Neither the CV nor the letter is a one-shot: the agent **generates → measures ATS coverage *and* writing quality (both deterministic) → verifies integrity → revises → proofreads**, keeping the best version. Two measurable objectives, not vibes. |
 | ✍️ **Writing-quality gate** | A deterministic checker (`quality.py`, no LLM) flags unfilled placeholders, **language mixing** (English left in a French letter), repeated words, spacing and French typography, AI preambles — then drives a targeted proofread. Scores are shown in the UI. |
 | 🤖 **Autonomous agent (tool-calling)** | `/prepare` runs a **ReAct loop**: the LLM *chooses* which tools to call (measure ATS, analyse, recall memory, recommend, write CV/letter) and in what order — every step is traced. |
 | 🧠 **Long-term memory** | Remembers offers already analysed and **recurring gaps** across offers ("you're often missing X") to sharpen future advice. |
 | 🔎 **Internship sourcing** | Describe the internship you want (free text) + keywords/location → the agent searches the sources **you pick from its catalog** (verified public ATS boards incl. French companies, RemoteOK, Jobicy-France, Arbeitnow-EU, any custom **RSS feed** — e.g. Novojob for Morocco/Africa) with FR/EN location aliases (*Maroc ↔ Morocco ↔ Casablanca…*). |
 | 🏆 **Relevance ranking** | Every sourced offer gets a deterministic **match %** — coverage of *your target description's* keywords in the offer, blended with how much of the offer's keywords your CV already has. Best matches first. |
-| 🗂️ **Application pipeline** | Each offer moves through `sourced → analyzed → ready → applied/skipped`. Per offer — or **top-5 in one click** — the agent builds the **full application kit**: tailored CV (**PDF, designed 2-column**), cover letter (**Word .docx**), outreach messages. |
+| 🗂️ **Application pipeline** | Each offer moves through `sourced → analyzed → ready → applied/skipped`. Per offer — or **top-5 in one click** — the agent builds the **full application kit**: tailored CV (**PDF, ATS layout by default**), cover letter (**Word .docx**), outreach messages. |
 | ✍️ **Your templates + letter prompt** | LinkedIn invite (≤300 chars), message and e-mail from **your editable templates**; plus a free-text **letter prompt** ("punchy opening, 3 short paragraphs, highlight my AI projects…") that shapes how every cover letter is written. |
 | 🚀 **Reviewed apply flow** | Before applying to any offer the agent **shows you the CV and the letter**; you confirm → it opens the offer page and marks it applied. **It never submits for you.** |
 
 ## 🛡️ Why it never auto-applies (by design)
 
 Auto-submitting on LinkedIn/Indeed violates their ToS, gets real accounts banned, and dies on CAPTCHAs. Like the best tools in this space (career-ops: *"it never submits, sends, or clicks anything"*), this agent is **a filter and a builder, not a spray-and-pray auto-applier**: it sources from job boards companies *voluntarily* expose as public JSON APIs (plus any RSS feed you add), ranks, and prepares everything — then **shows you each CV + letter for review before you make the final send** on the offer's own page.
+
+## 🔬 The ATS parse audit — what the robot *actually* reads
+
+Every CV tool on the market optimises the **text**. But you don't upload text to a job
+portal, you upload a **PDF** — and between the two, the layout can destroy everything.
+A CV scoring 92 % on keyword coverage can arrive at the recruiter as a wall of isolated
+letters, and nobody finds out.
+
+`core/atscheck.py` closes that gap. It **re-extracts the generated PDF the way an ATS
+does**, and measures what survived:
+
+```
+tailored CV (Markdown)  ──► export.cv_pdf(layout="ats")  ──► PDF bytes
+                                                              │
+                                        ┌─────────────────────┴─────────────────────┐
+                                        ▼                                           ▼
+                                  pypdf extract                            pdfminer.six extract
+                                        └─────────────────────┬─────────────────────┘
+                                                              ▼
+                                              audit: keywords lost? e-mail findable?
+                                              sections identifiable? text exploded
+                                              letter-by-letter? columns interleaved?
+                                                              ▼
+                                                   score 0-100 = the WORST engine
+```
+
+**Why two extractors.** An ATS is a black box — you don't know which parser sits behind
+the portal, and they don't agree. On a real Canva-exported CV, `pypdf` returns
+`D é v e l o p p e m e n t` (every glyph separated: **zero keywords matchable**) while
+`pdfminer.six` reconstructs the words but glues lines together and scrambles the reading
+order. Scoring the **worst** engine is the only honest call: you don't get to pick the
+recruiter's tool.
+
+What it catches, all deterministic, no LLM:
+
+| Check | Why it sinks an application |
+|---|---|
+| `not_extractable` | CV exported as an image or outlines — the ATS reads **nothing**. Instant 0. |
+| `char_spacing` | Text extracted letter-by-letter (Canva/Figma per-glyph positioning): looks perfect on screen, matches no keyword. |
+| `keyword_loss` | Keywords present in the CV text but **gone from the PDF** — the layout ate them. The most actionable signal there is. |
+| `glued_contact` | `AxelAHOaho.axel5@gmail.com` — the ATS stores a broken address and the interview invite goes nowhere. |
+| `contact_buried` | Contact block found at 35 % of the document instead of the header: reading order is scrambled. |
+| `column_interleave` | A section heading found mid-line — the parser is mixing your sidebar into your job descriptions. |
+| `missing_sections` · `no_dates` | Experience/Education/Skills unidentifiable, or no parsable years: no seniority computed. |
+| `glued_words` · `glued_lines` · `mangled_chars` | Lost spaces and accents mangled into `?` at export. |
+
+Two entry points:
+
+```bash
+POST /ats-check            # multipart: audit ANY PDF — including the CV you already use
+POST /ats-check/compare    # render both layouts, audit each, recommend one (ties go to ATS)
+```
+
+and the report rides along with every generated CV (`ats_parse` in `/tailored-cv` and in
+each prepared pipeline kit), so the promise *"ATS-optimised"* is a **measurement**, not a
+claim.
 
 ## 🔁 The agentic loops (tailored CV **and** cover letter)
 
@@ -83,10 +141,13 @@ Every step is **traced** and shown in the UI, and every LLM call is **fail-open*
 CV (PDF/DOCX/TXT/MD) ──► extract.py         plain text
 Job offer (text/URL) ──► extract.fetch_url  plain text
         │
-        ├─► ats.py         deterministic: offer keywords → coverage % vs CV   (tested, no LLM)
-        └─► agent.py        LLM: fit score, strengths/gaps, projects, CV suggestions,
-                            cover letter, and an agentic optimise_cv() loop
-                            (generate → measure → verify_grounding → revise)
+        ├─► ats.py         deterministic: offer keywords → coverage % vs CV, weighted by
+        │                  how much the offer insists on each one          (tested, no LLM)
+        ├─► agent.py       LLM: fit score, strengths/gaps, projects, CV suggestions,
+        │                  cover letter, and an agentic optimise_cv() loop
+        │                  (generate → measure → verify_grounding → revise)
+        └─► atscheck.py    the generated PDF, re-extracted like an ATS would:
+                           what actually survives the layout               (tested, no LLM)
 ```
 
 The **ATS layer is deterministic and unit-tested** — it doubles as the loop's objective function; the LLM layer adds the reasoning. Every LLM function returns `(result, err)` — the API surfaces a clear error instead of crashing.
@@ -104,7 +165,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 123 tests, no network / no API key
+python -m pytest tests/ -q                          # 166 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -114,7 +175,9 @@ python -m pytest tests/ -q                          # 123 tests, no network / no
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
 | `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis, recommendation, memory}` |
 | `POST /cover-letter` | `{cv_text, offer_text, lang, tone, letter_style}` | `{cover_letter, quality_start, quality_final, quality_issues, iterations, unsupported_final}` |
-| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, iterations, unsupported_final}` |
+| `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, ats_weighted_final, critical_missing, ats_parse, iterations, unsupported_final}` |
+| `POST /ats-check` | multipart `file` (+ `offer_text`) | parse audit of **any** CV PDF — score, issues, contact/sections found, per-engine detail |
+| `POST /ats-check/compare` | `{cv_markdown, cv_structured, lang}` | both layouts rendered + audited + `recommended` |
 | `POST /prepare` | `{cv_text, offer_text\|offer_url, lang}` | `{steps[], analysis, ats, recommendation, cover_letter, tailored_cv, summary}` (autonomous agent) |
 | `GET /memory` | — | `{count, avg_fit, recurring_gaps[]}` |
 | `GET /sources` | — | catalog of sources the agent proposes (pick all / some) |
@@ -133,7 +196,11 @@ backend/
   app.py            FastAPI + serves the frontend
   core/
     llm.py          OpenAI client (chat + tool-calling) + tolerant JSON parse
-    ats.py          deterministic keyword extraction + coverage (tested)
+    ats.py          deterministic keyword extraction + coverage, accent/alias/plural
+                    tolerant, weighted by required-vs-nice-to-have (tested)
+    atscheck.py     ATS parse audit: re-extracts the PDF with pypdf AND pdfminer.six,
+                    scores the worst — keyword loss, char spacing, column interleave,
+                    contact & sections detectability (tested, no LLM)
     extract.py      CV text (PDF/DOCX/TXT/MD) + offer URL → text
     agent.py        offer_keywords (any-field ATS) · analyze · recommend (go/no-go) ·
                     cover_letter · tailored_cv · verify_grounding · optimize_cv (loop)
@@ -144,11 +211,12 @@ backend/
                     Arbeitnow/any RSS) + deterministic relevance ranking (rank_offers)
     pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
     templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
-    export.py       cover letter → Word (.docx) · tailored CV → designed 2-column PDF (fpdf2)
+    export.py       cover letter → Word (.docx) · tailored CV → PDF (fpdf2), two layouts:
+                    "ats" 1-column (default, for the robot) · "designed" 2-column (for a human)
     quality.py      deterministic writing-quality score: placeholders, language mixing,
                     typos, French typography, AI artefacts (the loops' 2nd objective)
-  tests/            123 unit tests (agent, ats, memory, orchestrator, render, extract, app,
-                    sources, pipeline, templates, export, quality, loops)
+  tests/            166 unit tests (agent, ats, atscheck, memory, orchestrator, render,
+                    extract, app, sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```
 

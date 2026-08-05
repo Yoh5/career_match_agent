@@ -54,9 +54,54 @@ def test_cv_pdf_survives_long_content_multipage():
     s["experiences"] = [{"title": f"Poste {i}", "org": "Org", "date": "2026",
                          "bullets": [f"réalisation {i}.{j} assez longue pour tester le retour à la ligne"
                                      for j in range(4)]} for i in range(14)]
-    data = export.cv_pdf(s, "", "fr")
     from pypdf import PdfReader
-    assert len(PdfReader(io.BytesIO(data)).pages) >= 2      # pagination colonne principale
+    for layout in ("ats", "designed"):
+        data = export.cv_pdf(s, "", "fr", layout=layout)
+        assert len(PdfReader(io.BytesIO(data)).pages) >= 2, layout      # pagination
+
+
+# ── Les deux mises en page : une pour le robot, une pour l'œil ──────────────
+
+def _text(data):
+    from pypdf import PdfReader
+    return "".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(data)).pages)
+
+
+def test_ats_layout_is_the_default():
+    assert export.cv_pdf(_STRUCTURED, "", "fr") == export.cv_pdf(_STRUCTURED, "", "fr", layout="ats")
+
+
+def test_ats_layout_uses_standard_section_headings():
+    txt = _text(export.cv_pdf(_STRUCTURED, "", "fr", layout="ats"))
+    for heading in ("PROFIL", "COMPÉTENCES", "EXPÉRIENCE PROFESSIONNELLE", "FORMATION"):
+        assert heading in txt, heading
+
+
+def test_ats_layout_english_headings():
+    txt = _text(export.cv_pdf(_STRUCTURED, "", "en", layout="ats"))
+    assert "PROFESSIONAL EXPERIENCE" in txt and "EDUCATION" in txt
+
+
+def test_ats_layout_keeps_bullets_attached_to_their_text():
+    # la puce est écrite DANS la chaîne : elle ne peut pas se détacher à l'extraction
+    txt = _text(export.cv_pdf(_STRUCTURED, "", "fr", layout="ats"))
+    assert "- Agent d'entretien WhatsApp" in txt
+
+
+def test_ats_layout_puts_contact_at_the_top():
+    txt = _text(export.cv_pdf(_STRUCTURED, "", "fr", layout="ats"))
+    assert txt.index("a@b.co") < 120                 # l'ATS lit le candidat dans l'en-tête
+
+
+def test_designed_layout_still_available():
+    txt = _text(export.cv_pdf(_STRUCTURED, "", "fr", layout="designed"))
+    assert "Axel AHO" in txt and "Career Match Agent" in txt
+
+
+def test_accents_survive_the_pdf_round_trip():
+    s = dict(_STRUCTURED, summary="Modélisation à Casablanca, coût réduit, données traitées.")
+    txt = _text(export.cv_pdf(s, "", "fr"))
+    assert "Modélisation" in txt and "coût" in txt
 
 
 def test_latin_sanitizer():
