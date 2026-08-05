@@ -140,15 +140,34 @@ def test_links_do_not_alter_the_extracted_text():
     assert "github.com/Yoh5/career_match_agent" in txt
 
 
-def test_ats_layout_autofits_to_one_page_when_close():
+def _pages(data):
     from pypdf import PdfReader
+    return len(PdfReader(io.BytesIO(data)).pages)
+
+
+def test_both_layouts_autofit_to_one_page_when_close():
+    """Un CV qui déborde de quelques lignes doit être resserré, pas paginé."""
     s = dict(_STRUCTURED)
-    # contenu qui déborde de peu : l'auto-ajustement doit le ramener sur une page
     s["experiences"] = [{"title": f"Poste {i}", "org": "Org", "date": "2026",
                          "bullets": [f"réalisation {i}.{j} décrite sur une ligne complète"
                                      for j in range(3)]} for i in range(7)]
-    data = export.cv_pdf(s, "", "fr", layout="ats")
-    assert len(PdfReader(io.BytesIO(data)).pages) == 1
+    for layout in ("ats", "designed"):
+        assert _pages(export.cv_pdf(s, "", "fr", layout=layout)) == 1, layout
+
+
+def test_autofit_gives_up_rather_than_crushing_a_long_cv():
+    """Au-delà du raisonnable, on rend la version LISIBLE sur plusieurs pages
+    plutôt qu'un mur de texte à 7 points."""
+    s = dict(_STRUCTURED)
+    s["experiences"] = [{"title": f"Poste {i}", "org": "Organisation", "date": "2026",
+                         "bullets": [f"réalisation {i}.{j} suffisamment longue pour occuper "
+                                     "une ligne entière du document" for j in range(5)]}
+                        for i in range(16)]
+    for layout in ("ats", "designed"):
+        data = export.cv_pdf(s, "", "fr", layout=layout)
+        assert _pages(data) >= 2, layout
+        txt = _text(data)
+        assert "réalisation 15.4" in txt, layout      # rien n'est perdu au passage
 
 
 def test_accents_survive_the_pdf_round_trip():

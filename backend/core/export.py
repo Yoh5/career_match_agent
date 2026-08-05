@@ -111,8 +111,9 @@ _LIMIT_Y = _PAGE_H - _M
 class _Col:
     """Curseur de colonne indépendant (x fixe, y qui coule, saut de page géré)."""
 
-    def __init__(self, pdf, x, w, y):
+    def __init__(self, pdf, x, w, y, scale=1.0):
         self.pdf, self.x, self.w, self.y = pdf, x, w, y
+        self.scale = scale               # resserrement global (voir _autofit)
         self.page = pdf.page
 
     def _ensure(self, h):
@@ -128,9 +129,11 @@ class _Col:
         if not s:
             return
         self.pdf.page = self.page
+        size = max(7.0, size * self.scale)
         self.pdf.set_font("Helvetica", style, size)
         self.pdf.set_text_color(*color)
         line_h = size * 0.3528 * lh
+        before *= self.scale
         self._ensure(line_h + before)
         self.y += before
         self.pdf.set_xy(self.x, self.y)
@@ -142,6 +145,7 @@ class _Col:
         if not s:
             return
         self.pdf.page = self.page
+        size = max(7.0, size * self.scale)
         self.pdf.set_font("Helvetica", "", size)
         line_h = size * 0.3528 * 1.32
         self._ensure(line_h)
@@ -155,13 +159,13 @@ class _Col:
 
     def heading(self, s):
         self.pdf.page = self.page
-        self._ensure(9)
-        self.y += 3.5
+        self._ensure(9 * self.scale)
+        self.y += 3.5 * self.scale
         self.text(s.upper(), size=9.6, style="B", color=_ACCENT, before=0)
         self.pdf.page = self.page
         self.pdf.set_draw_color(*_LINE)
         self.pdf.line(self.x, self.y + 0.6, self.x + self.w, self.y + 0.6)
-        self.y += 2.4
+        self.y += 2.4 * self.scale
 
 
 def _clean(items) -> List:
@@ -209,7 +213,6 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
     from fpdf import FPDF
 
     lg = "en" if str(lang).lower().startswith("en") else "fr"
-    L = _LABELS[lg]
     pdf = FPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(False)
     pdf.set_margins(_M, _M, _M)
@@ -219,8 +222,17 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
         return _cv_pdf_fallback(pdf, cv_markdown)
 
     if str(layout).lower() != "designed":
-        return _ats_autofit(structured, lg, first=pdf)
+        return _autofit(lambda pdf, scale: _cv_pdf_ats(pdf, structured, lg, scale), first=pdf)
+    return _autofit(lambda pdf, scale: _cv_pdf_designed(pdf, structured, lg, scale), first=pdf)
 
+
+def _cv_pdf_designed(pdf, structured: Dict, lg: str, scale: float = 1.0) -> bytes:
+    """Mise en page DEUX COLONNES, pour l'œil humain : bandeau couleur, expériences
+    et projets à gauche, compétences/formation/certifications à droite.
+
+    `scale` resserre corps et interlignes — comme pour la version ATS, on préfère
+    un CV dense sur une page à un CV aéré qui déborde (voir `_autofit`)."""
+    L = _LABELS[lg]
     # ── Bandeau d'en-tête ──
     contact = structured.get("contact") or {}
     contact_bits = _clean([contact.get(k) for k in ("email", "phone", "location", "linkedin", "github", "portfolio")])
@@ -243,8 +255,8 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
             pdf.link(_M, 22, pdf.get_string_width(_latin(str(contact["email"]))), 4, mail)
 
     y0 = head_h + 5
-    main = _Col(pdf, _MAIN_X, _MAIN_W, y0)
-    side = _Col(pdf, _SIDE_X, _SIDE_W, y0)
+    main = _Col(pdf, _MAIN_X, _MAIN_W, y0, scale)
+    side = _Col(pdf, _SIDE_X, _SIDE_W, y0, scale)
 
     # ── Colonne principale ──
     if structured.get("summary"):
@@ -306,29 +318,30 @@ def cv_pdf(structured: Optional[Dict], cv_markdown: str = "", lang: str = "fr",
     return bytes(pdf.output())
 
 
-def _ats_autofit(s: Dict, lg: str, first=None) -> bytes:
-    """Rend le CV ATS et tente de le faire tenir sur UNE page.
+def _autofit(render, first=None) -> bytes:
+    """Rend le CV et tente de le faire tenir sur UNE page.
 
     Un CV junior qui déborde de quelques lignes se lit mal — mais on ne compresse
     pas à l'aveugle : on essaie des paliers de plus en plus serrés et on s'arrête
     au premier qui tient. Si même le plus serré déborde, c'est que le contenu est
-    réellement trop long, et on rend la version LISIBLE (échelle 1) sur deux pages
-    plutôt qu'un mur de texte illisible."""
+    réellement trop long, et on rend la version LISIBLE (échelle 1) sur plusieurs
+    pages plutôt qu'un mur de texte illisible.
+
+    `render(pdf, scale) -> bytes` : la fonction de rendu d'une mise en page."""
     from fpdf import FPDF
 
-    def render(scale, pdf=None):
-        if pdf is None:
-            pdf = FPDF(orientation="P", unit="mm", format="A4")
-            pdf.set_auto_page_break(False)
-            pdf.set_margins(_M, _M, _M)
-            pdf.add_page()
-        return _cv_pdf_ats(pdf, s, lg, scale)
+    def fresh():
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_auto_page_break(False)
+        pdf.set_margins(_M, _M, _M)
+        pdf.add_page()
+        return pdf
 
-    full = render(1.0, first)
+    full = render(first or fresh(), 1.0)
     if _page_count(full) <= 1:
         return full
     for scale in (0.94, 0.88, 0.82):
-        data = render(scale)
+        data = render(fresh(), scale)
         if _page_count(data) <= 1:
             return data
     return full

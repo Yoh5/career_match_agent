@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 175 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 176 unit tests (no network, no API key)
 
 ---
 
@@ -26,7 +26,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | ✎ **CV improvement suggestions** | Concrete, actionable edits (wording, missing keywords, ordering, quantification) to raise the score. |
 | 📝 **Tailored CV** | Your CV rewritten & reordered for the offer, **ATS-friendly** (standard sections, exact keywords you truly have). |
 | 🔬 **ATS parse audit** | The check nobody does: the agent **re-extracts the PDF it just produced, exactly as an ATS would**, and reports what survived — keywords lost to the layout, e-mail/phone still findable, sections still identifiable. Works on **your own CV too**, not just generated ones. See below. |
-| 📄 **Two PDF layouts** | **ATS (default)** — single column, canonical headings, monochrome: the one to drop on a portal. **Designed** — two columns with a coloured header, for sending straight to a human. You get both, and the audit tells you what each costs. |
+| 📄 **Two PDF layouts** | **ATS (default)** — single column, canonical headings, monochrome: the one to drop on a portal. **Designed** — two columns with a coloured header, for sending straight to a human. Both **auto-fit to one page** (progressively tighter passes, giving up rather than crushing a genuinely long CV), both carry **clickable links** (e-mail, profiles, project repos), and the audit tells you what each costs. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
 | ⬇️ **Word & PDF downloads** | Everywhere — single offer *and* pipeline — the cover letter downloads as **.docx** and the tailored CV as a PDF in **either layout** (pure Python, no headless browser). |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
@@ -165,7 +165,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 175 tests, no network / no API key
+python -m pytest tests/ -q                          # 176 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -215,7 +215,7 @@ backend/
                     "ats" 1-column (default, for the robot) · "designed" 2-column (for a human)
     quality.py      deterministic writing-quality score: placeholders, language mixing,
                     typos, French typography, AI artefacts (the loops' 2nd objective)
-  tests/            175 unit tests (agent, ats, atscheck, memory, orchestrator, render,
+  tests/            176 unit tests (agent, ats, atscheck, memory, orchestrator, render,
                     extract, app, sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```
