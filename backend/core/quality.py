@@ -156,6 +156,17 @@ def issues(text: str, lang: str = "fr", kind: str = "letter") -> List[Dict]:
         elif words > 600:
             out.append({"type": "too_long", "severity": "low",
                         "detail": f"lettre longue ({words} mots)", "count": 1})
+    elif kind == "email":
+        # Un e-mail de candidature n'obéit pas aux mêmes bornes qu'une lettre :
+        # trop court il ne dit rien, trop long il n'est pas lu jusqu'au bout.
+        words = len(_words(t))
+        if words and words < 60:
+            out.append({"type": "too_short", "severity": "medium",
+                        "detail": f"e-mail très court ({words} mots)", "count": 1})
+        elif words > 300:
+            out.append({"type": "too_long", "severity": "medium",
+                        "detail": f"e-mail trop long ({words} mots) — il ne sera pas lu en entier",
+                        "count": 1})
 
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     return sorted(out, key=lambda i: (order.get(i["severity"], 9), -i["count"]))

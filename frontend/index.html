@@ -317,6 +317,7 @@
       <button class="btn btn-p" id="btnAnalyze">📊 Analyser le fit</button>
       <button class="btn btn-s" id="btnLetter">✉️ Lettre de motivation</button>
       <button class="btn btn-s" id="btnCV">📝 CV adapté</button>
+      <button class="btn btn-s" id="btnEmail" title="E-mail rédigé pour CETTE offre, prêt à envoyer">📧 E-mail de candidature</button>
       <button class="btn btn-p" id="btnAgent" title="L'agent enchaîne lui-même les outils">🤖 Préparer ma candidature (agent)</button>
     </div>
     <div id="globalErr" class="status err" style="margin-top:12px"></div>
@@ -354,6 +355,7 @@
         <button class="btn btn-g hidden" id="btnHtml">⬇️ HTML</button>
         <button class="btn btn-g hidden" id="btnPrint">🖨️ Imprimer / PDF</button>
         <button class="btn btn-g hidden" id="btnDocx">⬇️ Lettre (Word)</button>
+        <button class="btn btn-g hidden" id="btnEml" title="S'ouvre dans ton client mail, objet et corps pré-remplis">⬇️ E-mail (.eml)</button>
         <button class="btn btn-g hidden" id="btnPdf" title="Une colonne, sections standard — la version à déposer sur un portail">⬇️ CV (PDF ATS)</button>
         <button class="btn btn-g hidden" id="btnPdfDesign" title="Deux colonnes, mise en page soignée — pour un envoi direct à un humain">⬇️ CV (PDF design)</button>
       </div>
@@ -636,6 +638,27 @@ function letterOrCV(path, title, filename, btn, label){
     finally{ busy(btn,false); }
   };
 }
+/* E-mail de candidature : objet + corps rédigés pour CETTE offre.
+   Affiché avec l'objet en tête, exportable en .eml (ouvre le client mail). */
+$("btnEmail").dataset.label = $("btnEmail").innerHTML;
+$("btnEmail").onclick = async ()=>{
+  setErr(""); busy($("btnEmail"), true, "Rédaction…");
+  try{
+    const d = await post("/outreach-email", body());
+    $("outTitle").textContent = "📧 E-mail de candidature";
+    $("outText").textContent = "Objet : "+d.subject+"\n\n"+d.body;
+    setCvHtml(""); $("applyBar").classList.add("hidden");
+    setExports({email_subject:d.subject, email_body:d.body});
+    showTrace({quality_start:d.quality, quality_final:d.quality,
+               quality_issues:d.quality_issues, unsupported_final:d.unsupported});
+    $("outCard").classList.remove("hidden");
+    $("btnDownload").dataset.file = "email_candidature.txt";
+    markStep("step3", true);
+    $("outCard").scrollIntoView({behavior:"smooth"});
+  }catch(err){ setErr(err.message); }
+  finally{ busy($("btnEmail"), false); }
+};
+
 $("btnLetter").dataset.label = $("btnLetter").innerHTML;
 $("btnCV").dataset.label = $("btnCV").innerHTML;
 $("btnLetter").onclick = letterOrCV("/cover-letter","✉️ Lettre de motivation","lettre_motivation.txt",$("btnLetter"),"Rédaction…");
@@ -949,7 +972,9 @@ function showPrepared(id, p, forApply){
   if(p.cv_markdown) parts.push("── CV ADAPTÉ (Markdown — télécharge le PDF pour la version mise en page) ──\n\n"+p.cv_markdown);
   if(p.messages && p.messages.linkedin_invite) parts.push("── INVITATION LINKEDIN (≤300 car.) ──\n\n"+p.messages.linkedin_invite);
   if(p.messages && p.messages.linkedin_message) parts.push("── MESSAGE LINKEDIN ──\n\n"+p.messages.linkedin_message);
-  if(p.messages && p.messages.email) parts.push("── E-MAIL ──\n\n"+p.messages.email);
+  if(p.messages && p.messages.email)
+    parts.push("── E-MAIL DE CANDIDATURE ──\n\n"+
+      (p.email_subject ? "Objet : "+p.email_subject+"\n\n" : "")+p.messages.email);
   $("outTitle").textContent = forApply ? "🚀 Vérifie AVANT de postuler — CV + lettre de cette offre"
                                        : "🧰 Dossier de candidature — prêt à envoyer";
   $("outText").textContent = parts.join("\n\n\n") || "(dossier vide — clique 🧰 Préparer)";

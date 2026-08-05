@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 176 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 189 unit tests (no network, no API key)
 
 ---
 
@@ -28,6 +28,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 | 🔬 **ATS parse audit** | The check nobody does: the agent **re-extracts the PDF it just produced, exactly as an ATS would**, and reports what survived — keywords lost to the layout, e-mail/phone still findable, sections still identifiable. Works on **your own CV too**, not just generated ones. See below. |
 | 📄 **Two PDF layouts** | **ATS (default)** — single column, canonical headings, monochrome: the one to drop on a portal. **Designed** — two columns with a coloured header, for sending straight to a human. Both **auto-fit to one page** (progressively tighter passes, giving up rather than crushing a genuinely long CV), both carry **clickable links** (e-mail, profiles, project repos), and the audit tells you what each costs. |
 | ✉️ **Cover letter** | Tailored to the offer, tone-selectable, grounded in your real experience. |
+| 📧 **Application e-mail, written per offer** | Not a mail-merge template with `{company}` swapped in: the agent **writes** the subject line and the body for *this* offer — one concrete proof from your CV answering the offer's main requirement, your real signature, no invented recruiter name and no invented source ("seen on your website") unless you gave the link. Downloads as **.eml**: double-click and it opens in your mail client, subject and body already filled. Your saved template becomes the *style guide*, and the fallback if the LLM is unavailable. |
 | ⬇️ **Word & PDF downloads** | Everywhere — single offer *and* pipeline — the cover letter downloads as **.docx** and the tailored CV as a PDF in **either layout** (pure Python, no headless browser). |
 | 🧭 **Go / no-go recommendation** | *Apply · strengthen first · skip* + a **prioritised action plan** — decision, not just data. |
 | 🌍 **Bilingual** | All outputs in **French or English** (your choice). |
@@ -144,7 +145,7 @@ Job offer (text/URL) ──► extract.fetch_url  plain text
         ├─► ats.py         deterministic: offer keywords → coverage % vs CV, weighted by
         │                  how much the offer insists on each one          (tested, no LLM)
         ├─► agent.py       LLM: fit score, strengths/gaps, projects, CV suggestions,
-        │                  cover letter, and an agentic optimise_cv() loop
+        │                  cover letter, per-offer application e-mail, and an agentic optimise_cv() loop
         │                  (generate → measure → verify_grounding → revise)
         └─► atscheck.py    the generated PDF, re-extracted like an ATS would:
                            what actually survives the layout               (tested, no LLM)
@@ -165,7 +166,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 176 tests, no network / no API key
+python -m pytest tests/ -q                          # 189 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -175,6 +176,8 @@ python -m pytest tests/ -q                          # 176 tests, no network / no
 | `POST /extract-cv` | multipart file | `{cv_text, chars}` |
 | `POST /analyze` | `{cv_text, offer_text\|offer_url, lang}` | `{ats, keywords, analysis, recommendation, memory}` |
 | `POST /cover-letter` | `{cv_text, offer_text, lang, tone, letter_style}` | `{cover_letter, quality_start, quality_final, quality_issues, iterations, unsupported_final}` |
+| `POST /outreach-email` | `{cv_text, offer_text\|offer_url, lang, tone, company, role, email_style}` | `{subject, body, quality, quality_issues, unsupported}` |
+| `POST /export/email.eml` · `GET /pipeline/{id}/email.eml` | `{subject, body, to}` · — | the e-mail as a **.eml** file |
 | `POST /tailored-cv` | `{cv_text, offer_text, lang}` | `{tailored_cv_markdown, tailored_cv_html, ats_start, ats_final, ats_weighted_final, critical_missing, ats_parse, iterations, unsupported_final}` |
 | `POST /ats-check` | multipart `file` (+ `offer_text`) | parse audit of **any** CV PDF — score, issues, contact/sections found, per-engine detail |
 | `POST /ats-check/compare` | `{cv_markdown, cv_structured, lang}` | both layouts rendered + audited + `recommended` |
@@ -211,11 +214,11 @@ backend/
                     Arbeitnow/any RSS) + deterministic relevance ranking (rank_offers)
     pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
     templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
-    export.py       cover letter → Word (.docx) · tailored CV → PDF (fpdf2), two layouts:
+    export.py       cover letter → Word (.docx) · e-mail → .eml · tailored CV → PDF (fpdf2), 2 layouts:
                     "ats" 1-column (default, for the robot) · "designed" 2-column (for a human)
     quality.py      deterministic writing-quality score: placeholders, language mixing,
                     typos, French typography, AI artefacts (the loops' 2nd objective)
-  tests/            176 unit tests (agent, ats, atscheck, memory, orchestrator, render,
+  tests/            189 unit tests (agent, ats, atscheck, memory, orchestrator, render,
                     extract, app, sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```

@@ -200,3 +200,41 @@ def test_tailored_cv_includes_the_parse_report(monkeypatch):
     assert d["ats_weighted_final"] == 93
     assert d["ats_parse"]["score"] >= 80
     assert d["ats_parse"]["keyword_loss"] == []
+
+
+# ── E-mail de candidature ───────────────────────────────────────────────────
+
+def test_outreach_email_endpoint(monkeypatch):
+    _enable_llm(monkeypatch)
+    monkeypatch.setattr(appmod.agent, "outreach_email", lambda *a, **k: (
+        {"subject": "Candidature — Stage IA", "body": "Bonjour,\n\nJe candidate.\n\nAxel",
+         "quality": 96, "quality_issues": [], "unsupported": []}, None))
+    r = client.post("/outreach-email", json={"cv_text": _CV, "offer_text": _OFFER})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["subject"].startswith("Candidature") and "Je candidate" in d["body"]
+
+
+def test_outreach_email_uses_the_saved_template_as_style_guide(monkeypatch, tmp_path):
+    _enable_llm(monkeypatch)
+    monkeypatch.setenv("CAREER_TEMPLATES_PATH", str(tmp_path / "tpl.json"))
+    appmod.templates.save({"email": "Toujours signer 'Bien à vous'."})
+    captured = {}
+    def _cap(cv, offer, lang, tone, **k):
+        captured.update(k)
+        return ({"subject": "s", "body": "b", "quality": 90,
+                 "quality_issues": [], "unsupported": []}, None)
+    monkeypatch.setattr(appmod.agent, "outreach_email", _cap)
+    client.post("/outreach-email", json={"cv_text": _CV, "offer_text": _OFFER})
+    assert "Bien à vous" in captured["style_notes"]
+
+
+def test_export_email_eml_downloads():
+    r = client.post("/export/email.eml", json={"subject": "Candidature", "body": "Bonjour,\n\nMerci."})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("message/rfc822")
+    assert b"Subject: Candidature" in r.content
+
+
+def test_export_email_rejects_empty_body():
+    assert client.post("/export/email.eml", json={"subject": "x", "body": " "}).status_code == 422

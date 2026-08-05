@@ -96,6 +96,9 @@ class OfferBody(BaseModel):
     lang: str = "fr"
     tone: Optional[str] = "professionnel"
     letter_style: Optional[str] = ""   # consignes libres sur la FORME de la lettre
+    email_style: Optional[str] = ""    # idem pour l'e-mail de candidature
+    company: Optional[str] = ""        # contexte facultatif (sinon déduit de l'offre)
+    role: Optional[str] = ""
 
 
 def _resolve(body: OfferBody):
@@ -196,6 +199,24 @@ def _parse_report(structured, cv_markdown: str, lang: str, keywords, offer_text:
         return {"score": None, "error": str(e), "issues": []}
 
 
+@app.post("/outreach-email")
+def do_outreach_email(body: OfferBody):
+    """E-mail de candidature RÉDIGÉ pour cette offre (objet + corps), prêt à envoyer.
+
+    À ne pas confondre avec `templates.email`, qui substitue des variables dans un
+    texte figé : ici le contenu change selon ce que l'offre demande et ce que le CV
+    prouve. Le template de l'utilisateur, s'il en a un, sert de guide de style."""
+    _guard_llm()
+    cv, offer = _resolve(body)
+    style = (body.email_style or "").strip() or templates.get_all().get("email", "")
+    res, err = agent.outreach_email(cv, offer, body.lang, body.tone or "professionnel",
+                                    company=body.company or "", role=body.role or "",
+                                    link=(body.offer_url or ""), style_notes=style)
+    if err:
+        raise HTTPException(502, f"Génération indisponible : {err}")
+    return res
+
+
 @app.post("/tailored-cv")
 def do_tailored_cv(body: OfferBody):
     """Boucle agentique : génère → mesure ATS → vérifie l'intégrité → révise,
@@ -239,6 +260,25 @@ def do_export_letter(body: LetterExportBody):
         content=export.letter_docx(body.text),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": 'attachment; filename="Lettre_motivation.docx"'},
+    )
+
+
+class EmailExportBody(BaseModel):
+    subject: str = ""
+    body: str
+    to: Optional[str] = ""
+
+
+@app.post("/export/email.eml")
+def do_export_email(body: EmailExportBody):
+    """E-mail (objet + corps) → fichier .eml : double-clic, il s'ouvre dans le
+    client de messagerie avec tout de pré-rempli."""
+    if len((body.body or "").strip()) < 10:
+        raise HTTPException(422, "E-mail vide — génère-le d'abord.")
+    return Response(
+        content=export.email_eml(body.subject, body.body, body.to or ""),
+        media_type="message/rfc822",
+        headers={"Content-Disposition": 'attachment; filename="Candidature.eml"'},
     )
 
 
@@ -410,6 +450,7 @@ class PipelineCvBody(BaseModel):
     my_name: Optional[str] = ""
     first_name: Optional[str] = ""   # prénom du recruteur (messages)
     letter_style: Optional[str] = "" # consignes de style pour la lettre (sinon template 'letter_prompt')
+    email_style: Optional[str] = ""  # idem pour l'e-mail de candidature (sinon template 'email')
 
 
 @app.post("/pipeline/{item_id}/analyze")
@@ -467,6 +508,18 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
     }
     messages = {k: templates.render(k, tvars) for k in ("linkedin_invite", "linkedin_message", "email")}
 
+    # E-mail RÉDIGÉ pour cette offre : le template ne sert plus que de guide de
+    # style, et de repli si le LLM est indisponible (fail-open).
+    mail, _merr = agent.outreach_email(
+        body.cv_text, offer, body.lang, body.tone or "professionnel",
+        company=item.get("company") or "", role=item.get("title") or "",
+        link=item.get("url") or "",
+        style_notes=(body.email_style or "").strip() or templates.get_all().get("email", ""))
+    email_subject = ""
+    if mail:
+        messages["email"] = mail["body"]
+        email_subject = mail["subject"]
+
     prepared = {
         "cv_markdown": md,
         "cv_html": render.cv_html(md, structured, body.lang),
@@ -475,6 +528,7 @@ def do_pipeline_prepare(item_id: str, body: PipelineCvBody):
         "cover_letter": letter or "",
         "cover_letter_error": lerr or "",
         "messages": messages,
+        "email_subject": email_subject,
         "ats_start": result["ats_start"], "ats_final": result["ats_final"],
         "ats_weighted_final": result.get("ats_weighted_final"),
         "critical_missing": result.get("critical_missing", []),
@@ -538,6 +592,20 @@ def do_letter_docx(item_id: str):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
+
+
+@app.get("/pipeline/{item_id}/email.eml")
+def do_email_eml(item_id: str):
+    """E-mail de candidature de ce dossier, au format .eml (objet + corps pré-remplis)."""
+    d = _prepared_or_422(item_id)
+    p = d["prepared"]
+    mail = (p.get("messages") or {}).get("email") or ""
+    if not mail.strip():
+        raise HTTPException(422, "Pas d'e-mail dans ce dossier.")
+    subject = p.get("email_subject") or f"Candidature - {d['item'].get('title') or 'poste'}"
+    name = f"Mail_{(d['item'].get('company') or 'offre').replace(' ', '_')}.eml"
+    return Response(content=export.email_eml(subject, mail), media_type="message/rfc822",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get("/pipeline/{item_id}/cv.pdf")

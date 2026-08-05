@@ -223,3 +223,62 @@ def test_restore_links_never_invents_an_entry():
 def test_restore_links_tolerates_garbage():
     assert agent.restore_links(None, _LINK_MD) is None
     assert agent.restore_links({}, "") == {}
+
+
+# ── outreach_email : e-mail rédigé POUR l'offre, pas un template à trous ────
+
+def _mail(monkeypatch, subject="Candidature - Stage AI Engineer - Axel AHO",
+          body=None, unsupported=None):
+    body = body or ("Bonjour,\n\nJe candidate au stage AI Engineer. " +
+                    "J'ai conçu un agent d'entretien déployé en production chez Holokia. " * 12 +
+                    "\n\nCordialement,\nAxel AHO")
+    monkeypatch.setattr(agent.llm, "complete",
+                        _ok(json.dumps({"subject": subject, "body": body})))
+    monkeypatch.setattr(agent, "verify_grounding",
+                        lambda *a, **k: ({"unsupported": unsupported or []}, None))
+
+
+def test_outreach_email_returns_subject_and_body(monkeypatch):
+    _mail(monkeypatch)
+    res, err = agent.outreach_email(_CV, _OFFER, "fr", company="Holokia", role="Stage IA")
+    assert err is None
+    assert res["subject"].startswith("Candidature")
+    assert "Holokia" in res["body"]
+    assert res["quality"] >= 0 and isinstance(res["quality_issues"], list)
+
+
+def test_outreach_email_subject_is_single_line(monkeypatch):
+    _mail(monkeypatch, subject="Candidature\nStage IA\nAxel")
+    res, _ = agent.outreach_email(_CV, _OFFER, "fr")
+    assert "\n" not in res["subject"]
+
+
+def test_outreach_email_falls_back_to_role_when_subject_empty(monkeypatch):
+    _mail(monkeypatch, subject="   ")
+    res, _ = agent.outreach_email(_CV, _OFFER, "fr", role="Stage Data")
+    assert res["subject"] == "Stage Data"
+
+
+def test_outreach_email_llm_error(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _fail("pas de clé"))
+    res, err = agent.outreach_email(_CV, _OFFER, "fr")
+    assert res is None and "pas de clé" in err
+
+
+def test_outreach_email_rejects_empty_body(monkeypatch):
+    monkeypatch.setattr(agent.llm, "complete", _ok(json.dumps({"subject": "x", "body": "  "})))
+    res, err = agent.outreach_email(_CV, _OFFER, "fr")
+    assert res is None and err
+
+
+def test_outreach_email_style_notes_never_override_integrity(monkeypatch):
+    """Le template de l'utilisateur guide la FORME ; la règle anti-invention reste."""
+    captured = {}
+    def _cap(prompt, **k):
+        captured["p"] = prompt
+        return (json.dumps({"subject": "s", "body": "Bonjour, " + "texte. " * 80}), None)
+    monkeypatch.setattr(agent.llm, "complete", _cap)
+    monkeypatch.setattr(agent, "verify_grounding", lambda *a, **k: ({"unsupported": []}, None))
+    agent.outreach_email(_CV, _OFFER, "fr", style_notes="Sois très bref, tutoie.")
+    assert "Sois très bref" in captured["p"]
+    assert "n'invente" in captured["p"].lower() or "INVENTE" in captured["p"]

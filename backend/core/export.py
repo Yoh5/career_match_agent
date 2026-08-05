@@ -97,6 +97,28 @@ def letter_docx(text: str) -> bytes:
     return buf.getvalue()
 
 
+# ═══ E-mail de candidature → .eml ═══════════════════════════════════════════
+
+def email_eml(subject: str, body: str, to: str = "", sender: str = "") -> bytes:
+    """E-mail au format .eml — double-clic et il s'ouvre dans Outlook, Thunderbird
+    ou Mail, objet et corps déjà remplis.
+
+    Préféré à un lien `mailto:` : au-delà de ~2000 caractères, les navigateurs
+    tronquent l'URL et le corps du message arrive amputé. Le destinataire est
+    laissé vide par défaut — c'est à l'utilisateur de le renseigner, l'agent
+    n'invente pas d'adresse de recruteur."""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["Subject"] = (subject or "").replace("\n", " ").strip()
+    if to.strip():
+        msg["To"] = to.strip()
+    if sender.strip():
+        msg["From"] = sender.strip()
+    msg.set_content((body or "").strip() + "\n")
+    return msg.as_bytes()
+
+
 # ═══ CV → .pdf (2 colonnes, depuis le JSON structuré) ═══════════════════════
 
 _M = 12          # marge (mm)

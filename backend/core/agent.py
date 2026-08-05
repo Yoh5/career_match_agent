@@ -185,6 +185,82 @@ def tailored_cv(cv_text: str, offer_text: str, lang: str = "fr") -> tuple:
     return quality.normalize(raw, lg), None
 
 
+def outreach_email(cv_text: str, offer_text: str, lang: str = "fr", tone: str = "professionnel",
+                   company: str = "", role: str = "", link: str = "",
+                   style_notes: str = "") -> tuple:
+    """E-mail de candidature RÉDIGÉ pour cette offre. Retourne ({subject, body}, err).
+
+    Différent de la lettre de motivation : plus court, il se lit dans le volet de
+    prévisualisation, et son OBJET décide de l'ouverture. Différent aussi du
+    template `templates.email`, qui produit le même texte pour toutes les offres
+    avec le nom de l'entreprise substitué — ici le contenu change réellement selon
+    ce que l'offre demande et ce que le CV prouve.
+
+    `style_notes` = consignes de forme de l'utilisateur (son template sert de
+    guide de style) ; elles ne priment jamais sur la règle anti-invention."""
+    lg = _lang(lang)
+    style_notes = (style_notes or "").strip()[:1000]
+    ctx = " ".join(x for x in (f"Entreprise : {company}." if company else "",
+                               f"Poste : {role}." if role else "",
+                               f"Lien de l'offre : {link}." if link else "") if x)
+    if lg == "en":
+        style = (f"\nCANDIDATE'S STYLE GUIDE (form only — it can never override the "
+                 f"no-fabrication rule):\n{style_notes}\n") if style_notes else ""
+        prompt = (
+            "Write the application E-MAIL this candidate will send for this job offer. "
+            f"Tone: {tone}. {ctx}\n"
+            "Rules that make an application e-mail work:\n"
+            "- SUBJECT: short and explicit — role + candidate name. No clickbait.\n"
+            "- BODY: 120-170 words, 3 short paragraphs, readable in a preview pane.\n"
+            "- Paragraph 1: which role. Say where the offer was seen ONLY if the link is given "
+            "above — never invent a source ('on your website', 'on LinkedIn').\n"
+            "- Paragraph 2: ONE concrete proof from the CV that answers the offer's main "
+            "requirement — a real project or result, named. Not a list of adjectives.\n"
+            "- Paragraph 3: mention the attached CV and cover letter, then a clear, low-friction "
+            "call to action.\n"
+            "- Sign with the candidate's REAL name and contact details from the CV.\n"
+            "- Address it neutrally (no invented recruiter name).\n"
+            f"{_NO_FABRICATION['en']}\n{_WRITING['en']}\n{style}\n"
+            'Return ONLY JSON: {"subject": "<...>", "body": "<...>"}\n\n'
+            f"=== JOB OFFER ===\n{offer_text[:5000]}\n\n=== CV ===\n{cv_text[:5000]}"
+        )
+    else:
+        style = (f"\nGUIDE DE STYLE DU CANDIDAT (forme uniquement — il ne peut jamais "
+                 f"l'emporter sur la règle anti-invention) :\n{style_notes}\n") if style_notes else ""
+        prompt = (
+            "Rédige l'E-MAIL de candidature que ce candidat enverra pour cette offre. "
+            f"Ton : {tone}. {ctx}\n"
+            "Règles qui font qu'un e-mail de candidature fonctionne :\n"
+            "- OBJET : court et explicite — intitulé du poste + nom du candidat. Pas d'accroche vendeuse.\n"
+            "- CORPS : 120 à 170 mots, 3 paragraphes courts, lisible dans un volet d'aperçu.\n"
+            "- Paragraphe 1 : quel poste. N'indique où l'offre a été vue QUE si le lien est "
+            "fourni ci-dessus — n'invente jamais la source (« sur votre site », « sur LinkedIn »).\n"
+            "- Paragraphe 2 : UNE preuve concrète tirée du CV qui répond à l'exigence "
+            "principale de l'offre — un projet ou un résultat réel, nommé. Pas une liste d'adjectifs.\n"
+            "- Paragraphe 3 : mentionne le CV et la lettre en pièces jointes, puis une demande "
+            "claire et facile à accepter.\n"
+            "- Signe avec le VRAI nom et les coordonnées du candidat, tirés du CV.\n"
+            "- Formule d'appel neutre (n'invente pas le nom du recruteur).\n"
+            f"{_NO_FABRICATION['fr']}\n{_WRITING['fr']}\n{style}\n"
+            'Réponds UNIQUEMENT en JSON : {"subject": "<...>", "body": "<...>"}\n\n'
+            f"=== OFFRE ===\n{offer_text[:5000]}\n\n=== CV ===\n{cv_text[:5000]}"
+        )
+    raw, err = llm.complete(prompt, json_mode=True, max_tokens=900, temperature=0.45)
+    if err:
+        return None, err
+    data = llm.parse_json(raw)
+    if not isinstance(data, dict) or not str(data.get("body", "")).strip():
+        return None, "Réponse LLM illisible"
+    subject = quality.normalize(str(data.get("subject", "")), lg).replace("\n", " ").strip()
+    body = quality.normalize(str(data["body"]), lg)
+    # Même filet que la lettre : relecture ciblée si la qualité est insuffisante,
+    # conservée uniquement si elle améliore ET n'invente rien.
+    body, q, unsupported = _polish(body, cv_text, lg, "email")
+    return {"subject": subject or (role or "Candidature"), "body": body,
+            "quality": q["score"], "quality_issues": q["issues"],
+            "unsupported": unsupported or []}, None
+
+
 def offer_keywords(offer_text: str, lang: str = "fr") -> tuple:
     """Extrait les mots-clés ATS de l'offre, TOUS DOMAINES (pas seulement tech) :
     compétences, outils/logiciels, certifications, méthodes et termes métier EXACTS
@@ -377,7 +453,10 @@ def proofread(text: str, lang: str = "fr", kind: str = "letter", issues_found: l
         listed = (f"\nProblèmes détectés automatiquement — corrige-les tous :\n{bullets}\n"
                   if lg == "fr" else
                   f"\nAutomatically detected problems — fix every one of them:\n{bullets}\n")
-    doc = "CV" if kind == "cv" else ("lettre de motivation" if lg == "fr" else "cover letter")
+    doc = ("CV" if kind == "cv"
+           else "e-mail de candidature" if kind == "email" and lg == "fr"
+           else "application e-mail" if kind == "email"
+           else "lettre de motivation" if lg == "fr" else "cover letter")
     if lg == "en":
         prompt = (
             f"Proofread this {doc}. Fix every spelling, grammar, tense, agreement and "

@@ -178,3 +178,33 @@ def test_accents_survive_the_pdf_round_trip():
 
 def test_latin_sanitizer():
     assert export._latin("émoji ✅ tiret — fine  espace") == "émoji  tiret - fine  espace"
+
+
+# ── E-mail → .eml : ouvrable directement dans un client de messagerie ───────
+
+def _parse(data):
+    """Relit le .eml comme le fera le client de messagerie : la politique `default`
+    décode les en-têtes encodés RFC 2047 — un accent dans l'objet voyage en base64
+    sur le fil, c'est correct et transparent à l'affichage."""
+    import email as _email
+    from email import policy
+    return _email.message_from_bytes(data, policy=policy.default)
+
+
+def test_email_eml_is_a_valid_message():
+    data = export.email_eml("Candidature — Stage IA (Axel AHO)",
+                            "Bonjour,\n\nJe candidate au stage.\n\nCordialement,\nAxel")
+    msg = _parse(data)
+    assert msg["Subject"] == "Candidature — Stage IA (Axel AHO)"
+    assert "Je candidate au stage." in msg.get_content()
+    assert msg["To"] is None                       # destinataire laissé à l'utilisateur
+
+
+def test_email_eml_sets_recipient_when_given():
+    msg = _parse(export.email_eml("Objet", "Corps", to="rh@exemple.com"))
+    assert msg["To"] == "rh@exemple.com"
+
+
+def test_email_eml_subject_stays_on_one_line():
+    msg = _parse(export.email_eml("Objet\nsur\ndeux lignes", "Corps"))
+    assert "\n" not in (msg["Subject"] or "")
