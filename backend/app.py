@@ -427,6 +427,24 @@ def do_pipeline_status(item_id: str, body: StatusBody):
     return {"ok": True, "id": item_id, "status": body.status}
 
 
+@app.delete("/pipeline/{item_id}")
+def do_pipeline_delete(item_id: str):
+    """Supprime une offre du pipeline. Sans ça, la liste ne fait que grossir."""
+    if not pipeline.remove(item_id):
+        raise HTTPException(404, "Offre introuvable dans le pipeline")
+    return {"ok": True, "id": item_id, "stats": pipeline.stats()}
+
+
+@app.delete("/pipeline")
+def do_pipeline_clear(status: Optional[str] = None):
+    """Vide le pipeline (`?status=` pour ne supprimer qu'un statut)."""
+    try:
+        removed = pipeline.clear(status)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    return {"ok": True, "removed": removed, "stats": pipeline.stats()}
+
+
 def _pipeline_offer(item_id: str) -> tuple:
     """(item, offer_text) — récupère le texte de l'offre (description sourcée,
     sinon fetch de l'URL en repli)."""

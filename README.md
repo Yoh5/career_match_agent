@@ -12,7 +12,7 @@ Upload your CV, paste a job/internship offer → the agent **scores the fit**, g
 >
 > **Integrity by design:** it never fabricates — it only reorganises, rephrases and surfaces what is genuinely in your CV.
 
-**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 189 unit tests (no network, no API key)
+**Stack:** Python · FastAPI · OpenAI (tool-calling) · pypdf + pdfminer.six / python-docx · vanilla-JS frontend · 199 unit tests (no network, no API key)
 
 ---
 
@@ -166,7 +166,7 @@ uvicorn app:app --reload                            # → http://localhost:8000
 Open `http://localhost:8000`, upload your CV, paste an offer, and go.
 
 ```bash
-python -m pytest tests/ -q                          # 189 tests, no network / no API key
+python -m pytest tests/ -q                          # 199 tests, no network / no API key
 ```
 
 ## 🔌 API
@@ -190,6 +190,7 @@ python -m pytest tests/ -q                          # 189 tests, no network / no
 | `POST /pipeline/{id}/prepare` | `{cv_text, lang, tone, my_name, first_name, letter_style}` | full kit: CV md+HTML, letter, outreach messages |
 | `GET /pipeline/{id}/letter.docx` · `GET /pipeline/{id}/cv.pdf` | — | cover letter as **Word**, tailored CV as **designed PDF** |
 | `GET \| PUT /templates` | `{templates}` | message templates + the cover-letter **prompt** |
+| `DELETE /pipeline/{id}` · `DELETE /pipeline` | — · `?status=` | remove one offer, or clear the queue — a pipeline you can't prune stops being useful |
 | `POST /export/letter.docx` · `POST /export/cv.pdf` | `{text}` · `{cv_markdown, cv_structured, lang}` | any letter → **Word**, any tailored CV → **designed PDF** (used by the single-offer flow) |
 
 ## 🗂️ Layout
@@ -212,13 +213,14 @@ backend/
     render.py       CV → designed HTML (2-col template from structured JSON) + Markdown fallback
     sources.py      sourcing catalog + connectors (Greenhouse/Lever/Ashby/RemoteOK/Jobicy/
                     Arbeitnow/any RSS) + deterministic relevance ranking (rank_offers)
-    pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped
+    pipeline.py     persistent application queue: sourced → analyzed → ready → applied/skipped,
+                    with per-offer and bulk deletion
     templates.py    your editable message templates + cover-letter prompt (tolerant rendering)
     export.py       cover letter → Word (.docx) · e-mail → .eml · tailored CV → PDF (fpdf2), 2 layouts:
                     "ats" 1-column (default, for the robot) · "designed" 2-column (for a human)
     quality.py      deterministic writing-quality score: placeholders, language mixing,
                     typos, French typography, AI artefacts (the loops' 2nd objective)
-  tests/            189 unit tests (agent, ats, atscheck, memory, orchestrator, render,
+  tests/            199 unit tests (agent, ats, atscheck, memory, orchestrator, render,
                     extract, app, sources, pipeline, templates, export, quality, loops)
 frontend/index.html  single-page UI (light/dark)
 ```

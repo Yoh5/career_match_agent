@@ -6,259 +6,305 @@
 <meta name="color-scheme" content="light dark">
 <title>Career Match Agent</title>
 <style>
-  /* ── Thème clair (défaut) ─────────────────────────────────── */
+  /* ── Jetons de design ──────────────────────────────────────────
+     Principe : UNE couleur d'accent, utilisée pour l'action principale et
+     le focus — rien d'autre. Le reste est une échelle de gris. Les surfaces
+     se distinguent par un filet, pas par une ombre : c'est ce qui donne le
+     calme visuel d'une interface d'outil plutôt que d'une landing page. */
   :root{
-    --ink:#141a2b; --ink-soft:#3a4256; --muted:#6b7690; --faint:#9aa3b8;
-    --line:#e6e9f2; --line-soft:#eef1f7;
-    --bg:#f4f5fb; --bg-grad-a:#eef1ff; --bg-grad-b:#f7f4ff;
-    --surface:#ffffff; --surface-2:#fafbff; --surface-3:#f5f7ff;
-    --accent:#5b57f0; --accent-ink:#4a46d6; --accent-soft:#ecebff;
-    --ok:#0f9d58; --ok-soft:#e7f7ee; --ok-line:#c7ecd6;
-    --warn:#d98218; --warn-soft:#fdf3e5;
-    --bad:#e0474c; --bad-soft:#fdeded; --bad-line:#f7d4d5;
-    --shadow:0 1px 2px rgba(20,30,60,.05), 0 8px 24px -12px rgba(20,30,60,.15);
-    --shadow-sm:0 1px 2px rgba(20,30,60,.06);
-    --ring:0 0 0 3px rgba(91,87,240,.16);
+    --ink:#16181d; --ink-soft:#3f444f; --muted:#6b7280; --faint:#9ca3af;
+    --line:#e5e7eb; --line-soft:#f0f1f4;
+    --bg:#fbfbfc; --surface:#ffffff; --surface-2:#f7f8fa; --surface-3:#f2f3f6;
+    --accent:#4f46e5; --accent-ink:#4338ca; --accent-soft:#eef2ff; --accent-line:#dcdffb;
+    --ok:#15803d; --ok-soft:#f0fdf4; --ok-line:#bbf7d0;
+    --warn:#b45309; --warn-soft:#fffbeb; --warn-line:#fde68a;
+    --bad:#b91c1c; --bad-soft:#fef2f2; --bad-line:#fecaca;
+    --shadow-sm:0 1px 2px rgba(16,24,40,.04);
+    --ring:0 0 0 3px rgba(79,70,229,.14);
+    --r:10px; --r-sm:7px;
   }
-  /* ── Thème sombre ─────────────────────────────────────────── */
   :root[data-theme="dark"]{
-    --ink:#eef1f8; --ink-soft:#c4cbdd; --muted:#94a0bb; --faint:#6a768f;
-    --line:#2a3346; --line-soft:#232b3b;
-    --bg:#0c0f17; --bg-grad-a:#141a2e; --bg-grad-b:#171327;
-    --surface:#151a26; --surface-2:#111623; --surface-3:#1a2130;
-    --accent:#8b88ff; --accent-ink:#a5a2ff; --accent-soft:#211f3d;
-    --ok:#3fd085; --ok-soft:#122a20; --ok-line:#1e4736;
-    --warn:#f0a94a; --warn-soft:#2c2314;
-    --bad:#ff6b70; --bad-soft:#2e1719; --bad-line:#4a2427;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -14px rgba(0,0,0,.7);
-    --shadow-sm:0 1px 2px rgba(0,0,0,.35);
-    --ring:0 0 0 3px rgba(139,136,255,.24);
+    --ink:#e8eaef; --ink-soft:#b9bec9; --muted:#8b93a3; --faint:#666e7e;
+    --line:#282c34; --line-soft:#202329;
+    --bg:#0e0f12; --surface:#15171b; --surface-2:#1a1d22; --surface-3:#1f232a;
+    --accent:#7c74f5; --accent-ink:#9891ff; --accent-soft:#1d1b33; --accent-line:#312d54;
+    --ok:#4ade80; --ok-soft:#122019; --ok-line:#1d3b2a;
+    --warn:#fbbf24; --warn-soft:#241d10; --warn-line:#453519;
+    --bad:#f87171; --bad-soft:#241416; --bad-line:#432224;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3);
+    --ring:0 0 0 3px rgba(124,116,245,.22);
   }
 
   *{box-sizing:border-box;margin:0;padding:0}
   html{-webkit-text-size-adjust:100%}
   body{
     font-family:"Inter",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    color:var(--ink); line-height:1.55; min-height:100vh;
-    background:
-      radial-gradient(1100px 520px at 12% -8%, var(--bg-grad-a), transparent 60%),
-      radial-gradient(900px 480px at 105% 0%, var(--bg-grad-b), transparent 55%),
-      var(--bg);
-    background-attachment:fixed;
-    transition:background-color .3s ease, color .3s ease;
+    font-size:14px; color:var(--ink); line-height:1.55; min-height:100vh;
+    background:var(--bg);
+    transition:background-color .2s ease, color .2s ease;
   }
-  .wrap{max-width:1000px;margin:0 auto;padding:22px 20px 72px}
+  .wrap{max-width:940px;margin:0 auto;padding:28px 24px 80px}
 
   /* ── En-tête ──────────────────────────────────────────────── */
-  header.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
-  .brand{display:flex;align-items:center;gap:12px}
+  header.top{display:flex;align-items:flex-start;justify-content:space-between;gap:20px}
+  .brand{display:flex;align-items:flex-start;gap:12px}
   .logo{
-    width:44px;height:44px;border-radius:13px;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;font-size:22px;
-    background:linear-gradient(135deg, var(--accent), #8b5cf6);
-    box-shadow:0 6px 18px -6px var(--accent);
+    width:34px;height:34px;border-radius:9px;flex-shrink:0;margin-top:2px;
+    display:flex;align-items:center;justify-content:center;font-size:16px;
+    background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent-line);
   }
-  h1{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
-  h1 b{color:var(--accent-ink)}
-  .sub{color:var(--muted);font-size:13px;margin-top:3px;max-width:62ch}
+  h1{font-size:17px;font-weight:650;letter-spacing:-.01em;line-height:1.3}
+  h1 b{font-weight:650;color:var(--accent-ink)}
+  .sub{color:var(--muted);font-size:13px;margin-top:2px;max-width:64ch}
 
-  /* Bascule thème */
   .theme-toggle{
-    width:44px;height:44px;border-radius:12px;flex-shrink:0;cursor:pointer;
-    border:1px solid var(--line);background:var(--surface);color:var(--ink);
-    display:flex;align-items:center;justify-content:center;font-size:18px;
-    box-shadow:var(--shadow-sm);transition:.18s;
+    width:34px;height:34px;border-radius:8px;flex-shrink:0;cursor:pointer;
+    border:1px solid var(--line);background:var(--surface);color:var(--muted);
+    display:flex;align-items:center;justify-content:center;font-size:14px;transition:.15s;
   }
-  .theme-toggle:hover{border-color:var(--accent);transform:translateY(-1px)}
-  .theme-toggle:active{transform:translateY(0)}
-  .theme-toggle .sun{display:none}
-  .theme-toggle .moon{display:block}
+  .theme-toggle:hover{color:var(--ink);border-color:var(--muted)}
+  .theme-toggle .sun{display:none}.theme-toggle .moon{display:block}
   :root[data-theme="dark"] .theme-toggle .sun{display:block}
   :root[data-theme="dark"] .theme-toggle .moon{display:none}
 
-  /* Fil des étapes */
-  .steps{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+  /* Fil des étapes — un repère discret, pas une barre de navigation */
+  .steps{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:20px 0 0}
   .step{
-    display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--muted);
-    background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 13px;
-    box-shadow:var(--shadow-sm);transition:.2s;
+    display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--faint);
+    padding:2px 0;
   }
+  .step + .step::before{content:"";width:14px;height:1px;background:var(--line);margin-right:6px}
   .step .n{
-    width:19px;height:19px;border-radius:50%;background:var(--accent-soft);color:var(--accent-ink);
-    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;
+    width:17px;height:17px;border-radius:50%;border:1px solid var(--line);
+    color:var(--faint);background:var(--surface);
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;
   }
-  .step.done{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
-  .step.done .n{background:var(--ok);color:#fff}
+  .step.done{color:var(--ok)}
+  .step.done .n{background:var(--ok);border-color:var(--ok);color:#fff}
 
   /* ── Cartes ───────────────────────────────────────────────── */
   .card{
-    background:var(--surface);border:1px solid var(--line);border-radius:16px;
-    padding:20px 22px;margin-top:16px;box-shadow:var(--shadow);
-    transition:background-color .3s ease, border-color .3s ease;
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+    padding:20px;margin-top:14px;
+    transition:background-color .2s ease, border-color .2s ease;
   }
   .card-label{
-    display:flex;align-items:center;gap:9px;font-size:12px;font-weight:800;
-    letter-spacing:.02em;color:var(--ink);margin-bottom:14px;
+    display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;
+    color:var(--ink);margin-bottom:16px;
   }
   .card-label .badge{
-    width:22px;height:22px;border-radius:7px;background:var(--accent-soft);color:var(--accent-ink);
-    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;
+    width:20px;height:20px;border-radius:6px;background:var(--surface-3);color:var(--muted);
+    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;
+    border:1px solid var(--line);
   }
-  label{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:7px}
+  .card-label .hint{margin-left:auto;font-size:12px;font-weight:400;color:var(--faint)}
+
+  /* Libellés en casse normale : l'ancienne version criait en capitales
+     traquées, ce qui mettait chaque champ au même niveau que les titres. */
+  label{font-size:12px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px}
 
   textarea,input[type=text],select{
-    width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
-    font:inherit;font-size:13.5px;color:var(--ink);outline:none;background:var(--surface-2);
-    transition:border-color .15s, box-shadow .15s, background-color .3s;
+    width:100%;border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 11px;
+    font:inherit;font-size:13.5px;color:var(--ink);outline:none;background:var(--surface);
+    transition:border-color .15s, box-shadow .15s;
   }
   textarea:focus,input[type=text]:focus,select:focus{border-color:var(--accent);box-shadow:var(--ring)}
   textarea::placeholder,input::placeholder{color:var(--faint)}
-  textarea{min-height:128px;resize:vertical}
+  textarea{min-height:104px;resize:vertical;line-height:1.6}
   select{cursor:pointer;-webkit-appearance:none;appearance:none;
-    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%236b7690' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
-    background-repeat:no-repeat;background-position:right 12px center;padding-right:32px}
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path d='M2 4l4 4 4-4' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat:no-repeat;background-position:right 11px center;padding-right:30px}
   .row{display:flex;gap:14px;flex-wrap:wrap;align-items:end}
-  .row>div{flex:1;min-width:150px}
+  .row>div{flex:1;min-width:160px}
+  .field{margin-top:14px}
 
   /* Dropzone CV */
   .drop{
-    border:1.5px dashed var(--line);border-radius:12px;padding:18px;background:var(--surface-2);
-    display:flex;align-items:center;gap:14px;flex-wrap:wrap;cursor:pointer;transition:.18s;
+    border:1px dashed var(--line);border-radius:var(--r-sm);padding:14px 16px;background:var(--surface-2);
+    display:flex;align-items:center;gap:13px;flex-wrap:wrap;cursor:pointer;transition:.15s;
   }
-  .drop:hover{border-color:var(--accent);background:var(--surface-3)}
+  .drop:hover{border-color:var(--accent);background:var(--accent-soft)}
   .drop.loaded{border-style:solid;border-color:var(--ok-line);background:var(--ok-soft)}
   .drop .ico{
-    width:40px;height:40px;border-radius:10px;background:var(--accent-soft);color:var(--accent-ink);
-    display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0;
+    width:32px;height:32px;border-radius:8px;background:var(--surface);color:var(--muted);
+    border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;
   }
-  .drop.loaded .ico{background:var(--ok);color:#fff}
+  .drop.loaded .ico{background:var(--ok);border-color:var(--ok);color:#fff}
   .drop .txt{flex:1;min-width:180px}
-  .drop .txt b{font-size:13.5px;font-weight:700}
+  .drop .txt b{font-size:13.5px;font-weight:600;display:block}
   .drop input[type=file]{display:none}
 
-  /* Boutons */
+  /* ── Boutons : trois niveaux, une seule hauteur ───────────── */
   .btn{
-    border:1px solid transparent;border-radius:10px;padding:11px 17px;
-    font:inherit;font-weight:650;font-size:13.5px;cursor:pointer;transition:.16s;
-    display:inline-flex;align-items:center;gap:8px;
+    border:1px solid transparent;border-radius:var(--r-sm);padding:8px 14px;
+    font:inherit;font-weight:550;font-size:13px;cursor:pointer;transition:.14s;
+    display:inline-flex;align-items:center;gap:7px;white-space:nowrap;line-height:1.5;
   }
-  .btn-p{background:var(--accent);color:#fff;box-shadow:0 6px 16px -8px var(--accent)}
-  .btn-p:hover{background:var(--accent-ink);transform:translateY(-1px)}
-  .btn-s{background:var(--accent-soft);color:var(--accent-ink);border-color:transparent}
-  .btn-s:hover{filter:brightness(.97);transform:translateY(-1px)}
-  .btn-g{background:var(--surface-3);color:var(--ink-soft);border-color:var(--line)}
-  .btn-g:hover{border-color:var(--accent);color:var(--accent-ink)}
-  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
-  .btn:active{transform:translateY(0)}
-  .actions{display:flex;gap:11px;flex-wrap:wrap;margin-top:16px}
+  .btn-p{background:var(--accent);color:#fff;box-shadow:var(--shadow-sm)}
+  .btn-p:hover{background:var(--accent-ink)}
+  .btn-s{background:var(--surface);color:var(--ink-soft);border-color:var(--line)}
+  .btn-s:hover{border-color:var(--muted);color:var(--ink)}
+  .btn-g{background:transparent;color:var(--muted);border-color:transparent;padding:8px 10px}
+  .btn-g:hover{background:var(--surface-3);color:var(--ink)}
+  .btn-danger{background:transparent;color:var(--bad);border-color:transparent}
+  .btn-danger:hover{background:var(--bad-soft)}
+  a.btn{text-decoration:none}      /* le lien « Offre ↗ » est un bouton, pas un lien souligné */
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn:focus-visible{outline:none;box-shadow:var(--ring)}
+
+  /* Une action principale, les secondaires derrière un séparateur */
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;align-items:center}
+  .actions .sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px}
 
   .status{font-size:12.5px;color:var(--muted)}
   .status.ok{color:var(--ok)}.status.err{color:var(--bad)}
   .hidden{display:none}
 
   /* Score */
-  .score{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+  .score{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
   .gauge{
-    width:86px;height:86px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-    font-size:26px;font-weight:800;color:#fff;flex-shrink:0;position:relative;
-    box-shadow:0 8px 22px -10px currentColor;
+    width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-size:20px;font-weight:650;color:#fff;flex-shrink:0;
   }
-  .score .meta{flex:1;min-width:200px}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-  .chip{background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-line);border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:650}
+  .score .meta{flex:1;min-width:220px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+  .chip{background:var(--surface-2);color:var(--muted);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:2px 8px;font-size:11.5px;font-weight:500}
   .chip.ok{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
+  .chip.pick{cursor:pointer;display:inline-flex;gap:6px;align-items:center;padding:3px 9px;
+    color:var(--ink-soft);background:var(--surface);user-select:none}
+  .chip.pick:hover{border-color:var(--muted)}
+  .chip.pick:has(input:checked){background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+  .chip.pick input{width:auto;margin:0;accent-color:var(--accent)}
 
+  /* Titres de sous-section : un filet ne suffisait pas, l'ancien style
+     empilait majuscules + couleur + trait. Ici, un simple gras discret. */
   h3{
-    font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-ink);
-    margin:20px 0 9px;display:flex;align-items:center;gap:7px;
+    font-size:12.5px;font-weight:600;color:var(--muted);
+    margin:22px 0 8px;letter-spacing:.01em;
   }
-  h3::after{content:"";flex:1;height:1px;background:var(--line)}
   ul{list-style:none}
-  ul li{position:relative;padding-left:22px;margin-bottom:6px;font-size:13.5px;color:var(--ink-soft)}
-  ul li::before{content:"▹";position:absolute;left:2px;color:var(--accent);font-weight:700}
-  ul.gap li::before{content:"△";color:var(--warn)}
-  ul.sugg li::before{content:"✎";color:var(--accent)}
-  ul li.muted::before{content:""}
+  ul li{position:relative;padding-left:18px;margin-bottom:5px;font-size:13.5px;color:var(--ink-soft)}
+  ul li::before{content:"";position:absolute;left:4px;top:9px;width:4px;height:4px;
+    border-radius:50%;background:var(--faint)}
+  ul.gap li::before{background:var(--warn)}
+  ul.sugg li::before{background:var(--accent)}
+  ul li.muted::before{display:none}
 
   /* Sortie */
   .out-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-  .out-head h3{margin:0;border:none}.out-head h3::after{display:none}
+  .out-head h3{margin:0;font-size:14px;font-weight:600;color:var(--ink)}
+  .toolbar{display:flex;gap:2px;flex-wrap:wrap;align-items:center}
   pre{
-    white-space:pre-wrap;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
-    font-size:12.5px;line-height:1.65;background:var(--surface-2);border:1px solid var(--line);
-    border-radius:11px;padding:16px;max-height:480px;overflow:auto;color:var(--ink-soft);margin-top:4px;
+    white-space:pre-wrap;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:12.5px;line-height:1.7;background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--r-sm);padding:16px;max-height:460px;overflow:auto;color:var(--ink-soft);margin-top:12px;
   }
   .trace{
     display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);
-    background:var(--accent-soft);border:1px solid transparent;border-radius:9px;
-    padding:8px 12px;margin:10px 0 2px;font-weight:600;
+    background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-sm);
+    padding:10px 12px;margin-top:12px;font-weight:450;flex-wrap:wrap;
   }
-  .trace b{color:var(--accent-ink)}
+  .trace b{color:var(--ink);font-weight:600}
 
   /* Reco go/no-go */
-  .reco{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:16px;background:var(--surface-2)}
+  .reco{border:1px solid var(--line);border-radius:var(--r-sm);padding:13px 15px;margin-top:16px;background:var(--surface-2)}
   .reco.go{border-color:var(--ok-line);background:var(--ok-soft)}
-  .reco.mid{border-color:var(--warn);background:var(--warn-soft)}
+  .reco.mid{border-color:var(--warn-line);background:var(--warn-soft)}
   .reco.no{border-color:var(--bad-line);background:var(--bad-soft)}
-  .reco-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .reco-badge{font-size:13px;font-weight:800;padding:4px 12px;border-radius:999px;color:#fff}
+  .reco-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .reco-badge{font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;color:#fff}
   .reco.go .reco-badge{background:var(--ok)}.reco.mid .reco-badge{background:var(--warn)}.reco.no .reco-badge{background:var(--bad)}
-  .reco-conf{font-size:12px;color:var(--muted);font-weight:600}
-  .reco-why{font-size:13px;color:var(--ink-soft);margin-top:7px}
+  .reco-conf{font-size:12px;color:var(--muted)}
+  .reco-why{font-size:13px;color:var(--ink-soft);margin-top:6px}
   ul.plan{counter-reset:step;margin-top:9px}
-  ul.plan li{padding-left:26px;color:var(--ink-soft)}
+  ul.plan li{padding-left:24px;color:var(--ink-soft)}
   ul.plan li::before{counter-increment:step;content:counter(step);
-    background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;
-    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;left:0;top:1px}
+    background:var(--surface);border:1px solid var(--line);color:var(--muted);
+    width:17px;height:17px;border-radius:50%;top:2px;left:0;
+    display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
 
-  /* Trace de l'agent (steps) */
-  .steps-trace{margin-top:6px}
+  /* Trace de l'agent */
+  .steps-trace{margin-top:4px}
   .stepline{
-    display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 11px;margin-bottom:6px;
-    background:var(--surface-2);border:1px solid var(--line);border-radius:9px;
+    display:flex;align-items:center;gap:9px;font-size:12.5px;padding:7px 10px;
+    border-bottom:1px solid var(--line-soft);
   }
-  .stepline .tool{font-weight:700;color:var(--accent-ink);font-family:"SF Mono",ui-monospace,monospace;font-size:12px}
+  .stepline:last-child{border-bottom:none}
+  .stepline .tool{font-weight:600;color:var(--ink);font-family:ui-monospace,monospace;font-size:12px}
   .stepline .res{color:var(--muted);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .stepline .idx{width:20px;height:20px;flex-shrink:0;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);
-    display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  .stepline .idx{width:18px;height:18px;flex-shrink:0;border-radius:50%;background:var(--surface-3);color:var(--muted);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
   .muted{color:var(--muted);font-size:12.5px}
 
-  .spin{display:inline-block;width:14px;height:14px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:s .7s linear infinite}
   @keyframes s{to{transform:rotate(360deg)}}
 
-  /* Pipeline de stages */
-  .pipe-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
-  .pipe-table th{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
-    text-align:left;padding:7px 9px;border-bottom:1px solid var(--line)}
-  .pipe-table td{padding:9px;border-bottom:1px solid var(--line-soft);color:var(--ink-soft);vertical-align:top}
+  /* ── Pipeline ─────────────────────────────────────────────── */
+  .pipe-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .pipe-head .card-label{margin:0}
+  .pipe-head .spacer{flex:1}
+  .pipe-stats{font-size:12px;color:var(--muted)}
+
+  .pipe-table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+  .pipe-table th{font-size:11px;font-weight:500;color:var(--faint);
+    text-align:left;padding:0 10px 8px;border-bottom:1px solid var(--line)}
+  .pipe-table td{padding:10px;border-bottom:1px solid var(--line-soft);color:var(--ink-soft);vertical-align:middle}
+  .pipe-table tr:last-child td{border-bottom:none}
   .pipe-table tr:hover td{background:var(--surface-2)}
-  .pipe-title{font-weight:700;color:var(--ink)}
+  .pipe-title{font-weight:600;color:var(--ink)}
   .pipe-sub{font-size:11.5px;color:var(--muted)}
-  .st{display:inline-block;font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:3px 9px;border-radius:999px}
-  .st-sourced{background:var(--accent-soft);color:var(--accent-ink)}
-  .st-analyzed{background:var(--warn-soft);color:var(--warn)}
-  .st-ready{background:var(--ok-soft);color:var(--ok)}
+  .st{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;border:1px solid transparent}
+  .st-sourced{background:var(--surface-3);color:var(--muted);border-color:var(--line)}
+  .st-analyzed{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-line)}
+  .st-ready{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-line)}
   .st-sent{background:var(--ok);color:#fff}
-  .st-skipped{background:var(--surface-3);color:var(--muted)}
-  .mini{padding:5px 10px;font-size:12px;border-radius:8px}
-  .pipe-actions{display:flex;gap:6px;flex-wrap:wrap}
-  .fitcell{font-weight:800}
-  .tpl-grid{display:grid;gap:12px;margin-top:10px}
-  .tpl-grid textarea{min-height:88px;font-size:12.5px}
-  details.adv{margin-top:12px}
-  details.adv summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--accent-ink)}
-  .note{font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);
-    border-radius:9px;padding:9px 12px;margin-top:10px}
+  .st-skipped{background:transparent;color:var(--faint);border-color:var(--line)}
+  .mini{padding:4px 9px;font-size:12px;border-radius:6px}
+  .pipe-actions{display:flex;gap:4px;flex-wrap:wrap;align-items:center;justify-content:flex-end}
+  .fitcell{font-weight:600;color:var(--ink)}
+  /* La croix de suppression reste discrète tant qu'on ne survole pas la ligne */
+  .btn-x{border:none;background:transparent;color:var(--faint);cursor:pointer;
+    font-size:15px;line-height:1;padding:4px 6px;border-radius:6px;opacity:.45;transition:.14s}
+  .pipe-table tr:hover .btn-x{opacity:1}
+  .btn-x:hover{background:var(--bad-soft);color:var(--bad)}
+  .armed{background:var(--bad-soft)!important;color:var(--bad)!important;
+    border:1px solid var(--bad-line)!important;opacity:1!important;font-weight:600}
+
+  .search-panel{border:1px solid var(--line);border-radius:var(--r-sm);background:var(--surface-2);
+    padding:0 14px 14px;margin-bottom:4px}
+  .search-panel summary{cursor:pointer;list-style:none;font-size:13px;font-weight:600;color:var(--ink);
+    padding:12px 0;margin:0 -14px;padding-left:14px;padding-right:14px}
+  .search-panel summary::-webkit-details-marker{display:none}
+  .search-panel summary::before{content:"▸ ";color:var(--faint);font-weight:400}
+  .search-panel[open] summary::before{content:"▾ "}
+  .search-panel[open] summary{border-bottom:1px solid var(--line);margin-bottom:14px}
+  .search-panel .field:first-of-type{margin-top:0}
+  .tpl-grid{display:grid;gap:14px;margin-top:14px}
+  .tpl-grid textarea{min-height:80px;font-size:12.5px}
+  details.adv{margin-top:14px;border-top:1px solid var(--line-soft);padding-top:12px}
+  details.adv summary{cursor:pointer;font-size:12.5px;font-weight:500;color:var(--muted);list-style:none}
+  details.adv summary::-webkit-details-marker{display:none}
+  details.adv summary::before{content:"▸ ";color:var(--faint)}
+  details.adv[open] summary::before{content:"▾ "}
+  details.adv summary:hover{color:var(--ink)}
+  .note{font-size:12.5px;color:var(--muted);border-left:2px solid var(--line);
+    padding:2px 0 2px 12px;margin-top:16px;line-height:1.6}
+  .note b{color:var(--ink-soft);font-weight:600}
   .table-wrap{overflow-x:auto}
+  .empty{text-align:center;color:var(--faint);font-size:13px;padding:28px 12px;
+    border:1px dashed var(--line);border-radius:var(--r-sm);margin-top:14px}
 
-  footer{text-align:center;color:var(--faint);font-size:12px;margin-top:34px}
-  footer a{color:var(--accent-ink);text-decoration:none}
-  footer a:hover{text-decoration:underline}
+  footer{text-align:center;color:var(--faint);font-size:12px;margin-top:40px}
+  footer a{color:var(--muted);text-decoration:none}
+  footer a:hover{color:var(--ink)}
 
-  @media (max-width:560px){
-    .wrap{padding:18px 14px 56px}
-    h1{font-size:19px}.sub{font-size:12.5px}
+  @media (max-width:600px){
+    .wrap{padding:20px 14px 56px}
+    .card{padding:16px}
     .actions .btn{flex:1;justify-content:center}
+    .actions .sep{display:none}
   }
 </style>
 </head>
@@ -266,10 +312,10 @@
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <div class="logo">🎯</div>
+      <div class="logo">◎</div>
       <div>
         <h1>Career <b>Match</b> Agent</h1>
-        <div class="sub">Tous métiers · Upload ton CV, colle une offre → score de fit ATS, décision go/no-go, projets à mettre en avant, suggestions, lettre &amp; CV adapté (FR/EN).</div>
+        <div class="sub">Ton CV + une offre → score de fit, décision go/no-go, CV adapté, lettre et e-mail. Tous métiers, FR ou EN.</div>
       </div>
     </div>
     <button class="theme-toggle" id="themeToggle" title="Basculer le thème" aria-label="Basculer le thème clair/sombre">
@@ -285,47 +331,48 @@
 
   <!-- 1. CV -->
   <div class="card">
-    <div class="card-label"><span class="badge">1</span> Ton CV (base)</div>
+    <div class="card-label"><span class="badge">1</span> Ton CV<span class="hint">PDF, DOCX, TXT ou MD</span></div>
     <label class="drop" id="cvDrop" for="cvFile">
       <div class="ico">📄</div>
       <div class="txt">
-        <b>Choisir ton CV</b>
-        <div id="cvStatus" class="status">Formats : PDF, DOCX, TXT, MD — glisse-dépose ou clique.</div>
+        <b>Choisir un fichier</b>
+        <div id="cvStatus" class="status">Glisse-dépose ou clique.</div>
       </div>
       <input type="file" id="cvFile" accept=".pdf,.docx,.txt,.md">
     </label>
     <div id="atsAuditBar" style="margin-top:10px;display:none;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-s" id="btnAtsAudit" title="Ré-extrait ton PDF comme le font les ATS et mesure ce qui survit">🔬 Auditer le parsing ATS de ce PDF</button>
-      <span class="muted" style="font-size:13px">Ce que le robot lit vraiment dans ton fichier — avant même de parler du contenu.</span>
+      <button class="btn btn-s" id="btnAtsAudit" title="Ré-extrait ton PDF comme le font les ATS et mesure ce qui survit">Auditer le parsing ATS</button>
+      <span class="muted">Ce que le robot lit vraiment dans ton fichier.</span>
     </div>
     <div id="atsAuditOut" class="hidden" style="margin-top:10px"></div>
   </div>
 
   <!-- 2. Offre + options -->
   <div class="card">
-    <div class="card-label"><span class="badge">2</span> L'offre (stage / job)</div>
+    <div class="card-label"><span class="badge">2</span> L'offre<span class="hint">colle le texte, ou une URL</span></div>
     <textarea id="offerText" placeholder="Colle ici le texte de l'offre…"></textarea>
-    <div style="margin-top:12px"><label>…ou une URL d'offre (optionnel)</label>
+    <div class="field"><label>…ou l'URL de l'offre</label>
       <input type="text" id="offerUrl" placeholder="https://…"></div>
-    <div class="row" style="margin-top:14px">
+    <div class="row field">
       <div><label>Langue des sorties</label>
         <select id="lang"><option value="fr">Français</option><option value="en">English</option></select></div>
-      <div><label>Ton (lettre)</label>
+      <div><label>Ton des documents</label>
         <select id="tone"><option>professionnel</option><option>enthousiaste</option><option>direct</option><option>formel</option></select></div>
     </div>
     <div class="actions">
-      <button class="btn btn-p" id="btnAnalyze">📊 Analyser le fit</button>
-      <button class="btn btn-s" id="btnLetter">✉️ Lettre de motivation</button>
-      <button class="btn btn-s" id="btnCV">📝 CV adapté</button>
-      <button class="btn btn-s" id="btnEmail" title="E-mail rédigé pour CETTE offre, prêt à envoyer">📧 E-mail de candidature</button>
-      <button class="btn btn-p" id="btnAgent" title="L'agent enchaîne lui-même les outils">🤖 Préparer ma candidature (agent)</button>
+      <button class="btn btn-p" id="btnAnalyze">Analyser le fit</button>
+      <button class="btn btn-s" id="btnAgent" title="L'agent enchaîne lui-même les outils : analyse, CV, lettre">Tout préparer (agent)</button>
+      <span class="sep"></span>
+      <button class="btn btn-s" id="btnCV">CV adapté</button>
+      <button class="btn btn-s" id="btnLetter">Lettre</button>
+      <button class="btn btn-s" id="btnEmail" title="E-mail rédigé pour CETTE offre, prêt à envoyer">E-mail</button>
     </div>
     <div id="globalErr" class="status err" style="margin-top:12px"></div>
   </div>
 
   <!-- Trace de l'agent autonome -->
   <div class="card hidden" id="agentCard">
-    <div class="card-label"><span class="badge">🤖</span> Agent autonome — trace des décisions</div>
+    <div class="card-label"><span class="badge">↻</span> Trace de l'agent</div>
     <div class="trace" id="agentSummary" style="display:none"></div>
     <div class="steps-trace" id="agentSteps"></div>
   </div>
@@ -341,28 +388,28 @@
       </div>
     </div>
     <div id="recoBox"></div>
-    <h3>✅ Points forts (vs l'offre)</h3><ul id="strengths"></ul>
-    <h3>△ Écarts à combler</h3><ul class="gap" id="gaps"></ul>
-    <h3>📌 Projets à mettre en avant</h3><ul id="projects"></ul>
-    <h3>✎ Suggestions pour améliorer ton CV (et le score)</h3><ul class="sugg" id="suggestions"></ul>
+    <h3>Points forts face à l'offre</h3><ul id="strengths"></ul>
+    <h3>Écarts à combler</h3><ul class="gap" id="gaps"></ul>
+    <h3>Projets à mettre en avant</h3><ul id="projects"></ul>
+    <h3>Comment remonter le score</h3><ul class="sugg" id="suggestions"></ul>
   </div>
 
   <div class="card hidden" id="outCard">
     <div class="out-head"><h3 id="outTitle">Sortie</h3>
-      <div style="display:flex;gap:9px;flex-wrap:wrap">
-        <button class="btn btn-g" id="btnCopy">📋 Copier</button>
-        <button class="btn btn-g" id="btnDownload">⬇️ Markdown</button>
-        <button class="btn btn-g hidden" id="btnHtml">⬇️ HTML</button>
-        <button class="btn btn-g hidden" id="btnPrint">🖨️ Imprimer / PDF</button>
-        <button class="btn btn-g hidden" id="btnDocx">⬇️ Lettre (Word)</button>
-        <button class="btn btn-g hidden" id="btnEml" title="S'ouvre dans ton client mail, objet et corps pré-remplis">⬇️ E-mail (.eml)</button>
-        <button class="btn btn-g hidden" id="btnPdf" title="Une colonne, sections standard — la version à déposer sur un portail">⬇️ CV (PDF ATS)</button>
-        <button class="btn btn-g hidden" id="btnPdfDesign" title="Deux colonnes, mise en page soignée — pour un envoi direct à un humain">⬇️ CV (PDF design)</button>
+      <div class="toolbar">
+        <button class="btn btn-g" id="btnCopy">Copier</button>
+        <button class="btn btn-g" id="btnDownload">Markdown</button>
+        <button class="btn btn-g hidden" id="btnHtml">HTML</button>
+        <button class="btn btn-g hidden" id="btnPrint">Imprimer</button>
+        <button class="btn btn-g hidden" id="btnDocx">Lettre .docx</button>
+        <button class="btn btn-g hidden" id="btnEml" title="S'ouvre dans ton client mail, objet et corps pré-remplis">E-mail .eml</button>
+        <button class="btn btn-g hidden" id="btnPdf" title="Une colonne, sections standard — la version à déposer sur un portail">CV ATS .pdf</button>
+        <button class="btn btn-g hidden" id="btnPdfDesign" title="Deux colonnes, mise en page soignée — pour un envoi direct à un humain">CV design .pdf</button>
       </div>
     </div>
     <div id="outMeta" class="hidden"></div>
     <div id="applyBar" class="hidden" style="margin:10px 0 4px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-p" id="btnConfirmApply">✅ J'ai vérifié le CV et la lettre → ouvrir l'offre &amp; marquer « postulée »</button>
+      <button class="btn btn-p" id="btnConfirmApply">J'ai vérifié → ouvrir l'offre et marquer « postulée »</button>
       <span class="muted">Le clic final d'envoi reste le tien, sur le site de l'offre.</span>
     </div>
     <pre id="outText"></pre>
@@ -370,8 +417,16 @@
 
   <!-- Pipeline de stages : sourcing → dossier prêt → envoi (à toi) -->
   <div class="card" id="pipeCard">
-    <div class="card-label"><span class="badge">🎯</span> Pipeline de stages — l'agent cherche &amp; prépare, TOI tu envoies</div>
-    <div style="margin-bottom:12px"><label>Décris le stage que tu cherches (l'agent s'en sert pour classer les offres)</label>
+    <div class="pipe-head">
+      <div class="card-label"><span class="badge">3</span> Pipeline d'offres</div>
+      <span class="spacer"></span>
+      <span class="pipe-stats" id="pipeStats"></span>
+      <button class="btn btn-g" id="btnRefreshPipe" title="Recharger la liste">Rafraîchir</button>
+      <button class="btn btn-danger hidden" id="btnClearPipe" title="Supprimer toutes les offres du pipeline">Tout vider</button>
+    </div>
+    <details class="search-panel" id="srcPanel" open>
+    <summary>Chercher de nouvelles offres</summary>
+    <div class="field"><label>Décris le stage que tu cherches (l'agent s'en sert pour classer les offres)</label>
       <textarea id="srcTarget" style="min-height:76px" placeholder="Ex. : stage PFE de 6 mois en ingénierie IA / agents LLM, Python, FastAPI — idéalement à Casablanca, Paris ou en remote…"></textarea></div>
     <div class="row">
       <div><label>Mots-clés (métier, techno…) — séparés par des virgules</label>
@@ -380,12 +435,12 @@
         <input type="text" id="srcLocation" placeholder="Maroc, Casablanca, Paris, Remote…"></div>
     </div>
 
-    <div style="margin-top:14px"><label>Sources proposées par l'agent — coche tout, une seule, ou plusieurs
+    <div class="field"><label>Sources interrogées
       <a href="#" id="srcAll" style="margin-left:8px;color:var(--accent-ink)">tout</a> ·
       <a href="#" id="srcNone" style="color:var(--accent-ink)">aucune</a></label>
       <div class="chips" id="srcCatalog" style="margin-top:4px"></div></div>
 
-    <details class="adv"><summary>➕ Mes propres sources (slugs ATS ou flux RSS)</summary>
+    <details class="adv"><summary>Mes propres sources (slugs ATS ou flux RSS)</summary>
       <div class="row" style="margin-top:10px">
         <div><label>Boards Greenhouse (slugs)</label><input type="text" id="srcGreenhouse" placeholder="doctolib, datadog…"></div>
         <div><label>Entreprises Lever (slugs)</label><input type="text" id="srcLever" placeholder="swile, aircall…"></div>
@@ -402,21 +457,22 @@
       <div><label>Prénom recruteur (optionnel, pour les messages)</label><input type="text" id="recFirst" placeholder="Marie"></div>
     </div>
     <div class="actions">
-      <button class="btn btn-p" id="btnSource">🔎 Chercher &amp; classer les offres</button>
-      <button class="btn btn-s" id="btnPrepTop">🧰 Préparer le top 5</button>
-      <button class="btn btn-g" id="btnRefreshPipe">↻ Rafraîchir</button>
+      <button class="btn btn-p" id="btnSource">Chercher &amp; classer</button>
+      <button class="btn btn-s" id="btnPrepTop">Préparer le top 5</button>
     </div>
     <div id="srcStatus" class="status" style="margin-top:10px"></div>
+    </details>
     <div class="table-wrap"><table class="pipe-table hidden" id="pipeTable">
-      <thead><tr><th>Offre</th><th>Match</th><th>Statut</th><th>Fit</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Offre</th><th>Match</th><th>Statut</th><th>Fit</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody id="pipeBody"></tbody>
     </table></div>
-    <div class="note">🛡️ L'agent source (APIs publiques + RSS), classe par pertinence, puis prépare pour chaque offre
-      le CV adapté (<b>PDF</b>), la lettre (<b>Word</b>) et tes messages — et <b>te montre tout AVANT</b> :
-      tu vérifies, puis « 🚀 Postuler » ouvre l'offre pour que TU valides l'envoi (jamais d'auto-candidature).</div>
+    <div class="empty hidden" id="pipeEmpty">Aucune offre pour l'instant — lance une recherche ci-dessus.</div>
+    <div class="note">L'agent cherche sur des APIs publiques, classe par pertinence, puis prépare le CV, la lettre
+      et les messages — et <b>te montre tout avant</b>. « Postuler » ouvre l'offre pour que tu valides l'envoi
+      toi-même : <b>jamais d'auto-candidature</b>.</div>
 
     <details class="adv" id="tplDetails">
-      <summary>✏️ Mes templates &amp; le prompt de ma lettre</summary>
+      <summary>Mes templates et le prompt de ma lettre</summary>
       <div class="tpl-grid">
         <div><label>Prompt de la lettre de motivation — décris COMMENT tu veux qu'elle soit rédigée</label>
           <textarea id="tplLetter" placeholder="Ex. : accroche percutante en 1 phrase, 3 paragraphes courts, mettre l'accent sur mes projets d'agents IA, terminer par une invitation à échanger, éviter les formules pompeuses…"></textarea></div>
@@ -812,7 +868,7 @@ async function loadCatalog(){
   try{
     const d = await getJSON("/sources"); CATALOG = d.catalog||[];
     $("srcCatalog").innerHTML = CATALOG.map((s,i)=>
-      '<label class="chip ok" style="cursor:pointer;display:inline-flex;gap:6px;align-items:center" title="'+esc(s.note||"")+'">'+
+      '<label class="chip pick" title="'+esc(s.note||"")+'">'+
       '<input type="checkbox" data-idx="'+i+'" style="width:auto;margin:0"> '+esc(s.name)+'</label>').join("");
   }catch(e){ $("srcCatalog").innerHTML = '<span class="muted">catalogue indisponible</span>'; }
 }
@@ -836,9 +892,19 @@ function selectedSources(){
   return sel;
 }
 
+let srcPanelDecided = false;   // on choisit l'état du panneau UNE fois, puis on laisse la main
 function renderPipe(items){
   const tb = $("pipeBody");
-  if(!items || !items.length){ $("pipeTable").classList.add("hidden"); return; }
+  const n = (items || []).length;
+  // état vide explicite plutôt qu'un tableau qui disparaît sans rien dire
+  $("pipeTable").classList.toggle("hidden", !n);
+  $("pipeEmpty").classList.toggle("hidden", !!n);
+  $("btnClearPipe").classList.toggle("hidden", !n);
+  $("pipeStats").textContent = n ? n + " offre" + (n>1?"s":"") : "";
+  // le formulaire de recherche n'est déplié que s'il n'y a rien à lire ; ensuite
+  // c'est l'utilisateur qui décide, on ne le referme jamais dans son dos
+  if(!srcPanelDecided){ $("srcPanel").open = !n; srcPanelDecided = true; }
+  if(!n) return;
   tb.innerHTML = items.map(it=>{
     const fit = it.fit_score!=null ? it.fit_score : "–";
     const ats = it.ats_pct!=null ? " · ATS "+it.ats_pct+"%" : "";
@@ -851,20 +917,62 @@ function renderPipe(items){
       '<td><span class="st st-'+esc(it.status)+'">'+esc(ST_LABEL[it.status]||it.status)+'</span></td>'+
       '<td class="fitcell">'+fit+'<span class="pipe-sub">'+ats+'</span></td>'+
       '<td><div class="pipe-actions">'+
-        '<button class="btn btn-s mini" data-act="analyze">📊 Analyser</button>'+
-        '<button class="btn btn-s mini" data-act="prepare">🧰 Préparer</button>'+
-        (ready?'<button class="btn btn-g mini" data-act="view">👁 Voir</button>':'')+
-        (ready && it.status!=="sent"?'<button class="btn btn-p mini" data-act="apply">🚀 Postuler</button>':'')+
-        (it.url?'<a class="btn btn-g mini" href="'+esc(it.url)+'" target="_blank" rel="noopener">↗ Offre</a>':'')+
-        '<button class="btn btn-g mini" data-act="skipped" title="Ignorer">✕</button>'+
+        '<button class="btn btn-s mini" data-act="analyze">Analyser</button>'+
+        '<button class="btn btn-s mini" data-act="prepare">Préparer</button>'+
+        (ready?'<button class="btn btn-g mini" data-act="view">Voir</button>':'')+
+        (ready && it.status!=="sent"?'<button class="btn btn-p mini" data-act="apply">Postuler</button>':'')+
+        (it.url?'<a class="btn btn-g mini" href="'+esc(it.url)+'" target="_blank" rel="noopener">Offre ↗</a>':'')+
+        '<button class="btn btn-g mini" data-act="skipped" title="Écarter sans supprimer">Écarter</button>'+
+        '<button class="btn-x" data-act="delete" title="Supprimer définitivement cette offre">×</button>'+
       '</div></td></tr>';
   }).join("");
-  $("pipeTable").classList.remove("hidden");
 }
 
 async function refreshPipe(){
   try{ const d = await getJSON("/pipeline"); renderPipe(d.items); return d.items; }catch(e){ return []; }
 }
+
+/* Suppression : sans elle, les offres écartées s'accumulent et noient les
+   nouvelles. `del` supprime côté serveur puis recharge la liste. */
+function disarmAll(except){
+  document.querySelectorAll('[data-armed="1"]').forEach(b=>{
+    if(b===except) return;
+    b.dataset.armed = "0";
+    b.className = b.dataset.cls;
+    b.textContent = b.dataset.txt;
+  });
+}
+function armDelete(btn){
+  disarmAll(btn);
+  btn.dataset.cls = btn.dataset.cls || btn.className;
+  btn.dataset.txt = btn.dataset.txt || btn.textContent;
+  btn.dataset.armed = "1";
+  btn.className = "btn btn-danger mini armed";
+  btn.textContent = "Confirmer ?";
+}
+document.addEventListener("click", e=>{
+  if(!e.target.closest('[data-armed="1"]')) disarmAll(null);
+});
+async function del(path){
+  const r = await fetch(API+path, {method:"DELETE"});
+  if(!r.ok){ const d = await r.json().catch(()=>({})); throw new Error(d.detail||("Erreur "+r.status)); }
+  return r.json();
+}
+$("btnClearPipe").onclick = async e=>{
+  const btn = e.currentTarget;
+  const n = $("pipeBody").children.length;
+  if(btn.dataset.armed !== "1"){
+    disarmAll(btn);
+    btn.dataset.cls = btn.dataset.cls || btn.className;
+    btn.dataset.txt = btn.dataset.txt || btn.textContent;
+    btn.dataset.armed = "1";
+    btn.className = "btn btn-danger armed";
+    btn.textContent = "Supprimer les " + n + " offres ?";
+    return;
+  }
+  try{ await del("/pipeline"); disarmAll(null); await refreshPipe(); }
+  catch(err){ $("srcStatus").className="status err"; $("srcStatus").textContent="✗ "+err.message; }
+};
 
 $("btnSource").dataset.label = $("btnSource").innerHTML;
 $("btnSource").onclick = async ()=>{
@@ -915,6 +1023,24 @@ $("pipeBody").addEventListener("click", async e=>{
   const id = btn.closest("tr").dataset.id, act = btn.dataset.act;
   if(act==="skipped"){
     try{ await post("/pipeline/"+id+"/status", {status:"skipped"}); refreshPipe(); }catch(err){ setErr(err.message); }
+    return;
+  }
+  if(act==="delete"){
+    // premier clic : la croix devient un bouton rouge explicite ; second clic : on supprime.
+    // Une confirmation en ligne vaut mieux qu'un confirm() natif — elle reste dans la page,
+    // se lit dans le contexte de la ligne concernée, et s'annule d'un clic ailleurs.
+    if(btn.dataset.armed !== "1"){
+      armDelete(btn);
+      return;
+    }
+    try{
+      await del("/pipeline/"+id);
+      if(selectedItem && selectedItem.id===id){   // le dossier affiché n'existe plus
+        selectedItem = null;
+        $("outCard").classList.add("hidden");
+      }
+      refreshPipe();
+    }catch(err){ setErr(err.message); }
     return;
   }
   if(act==="view"){ return viewItem(id, false); }

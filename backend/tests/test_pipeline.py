@@ -67,3 +67,39 @@ def test_list_filter_by_status_and_stats():
     assert pipeline.list_items("ready")[0]["prepared_keys"] == ["cv_markdown"]
     s = pipeline.stats()
     assert s["by_status"]["ready"] == 1 and s["by_status"]["sourced"] == 1
+
+
+# ── Suppression : sans elle, le pipeline ne fait que grossir ────────────────
+
+def test_remove_deletes_one_offer():
+    pipeline.add_offers([_offer("https://a.co/1"), _offer("https://a.co/2")])
+    target = pipeline.list_items()[0]["id"]
+    assert pipeline.remove(target) is True
+    ids = [it["id"] for it in pipeline.list_items()]
+    assert target not in ids and len(ids) == 1
+
+
+def test_remove_unknown_id_is_false():
+    pipeline.add_offers([_offer("https://a.co/1")])
+    assert pipeline.remove("nexistepas") is False
+    assert len(pipeline.list_items()) == 1
+
+
+def test_clear_empties_everything():
+    pipeline.add_offers([_offer("https://a.co/1"), _offer("https://a.co/2")])
+    assert pipeline.clear() == 2
+    assert pipeline.list_items() == []
+
+
+def test_clear_by_status_keeps_the_rest():
+    pipeline.add_offers([_offer("https://a.co/1"), _offer("https://a.co/2")])
+    kept = pipeline.list_items()[0]["id"]
+    pipeline.update(kept, status="ready")
+    assert pipeline.clear("sourced") == 1
+    remaining = pipeline.list_items()
+    assert len(remaining) == 1 and remaining[0]["id"] == kept
+
+
+def test_clear_rejects_an_unknown_status():
+    with pytest.raises(ValueError):
+        pipeline.clear("nimportequoi")

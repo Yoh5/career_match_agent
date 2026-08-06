@@ -238,3 +238,45 @@ def test_export_email_eml_downloads():
 
 def test_export_email_rejects_empty_body():
     assert client.post("/export/email.eml", json={"subject": "x", "body": " "}).status_code == 422
+
+
+# ── Suppression d'offres du pipeline ────────────────────────────────────────
+
+@pytest.fixture
+def _pipe(monkeypatch, tmp_path):
+    monkeypatch.setenv("CAREER_PIPELINE_PATH", str(tmp_path / "pipe.json"))
+    from core import pipeline
+    pipeline.add_offers([
+        {"url": "https://a.co/1", "company": "Acme", "title": "Stage IA", "description": "Python"},
+        {"url": "https://a.co/2", "company": "Beta", "title": "Stage Data", "description": "SQL"},
+    ])
+    return pipeline
+
+
+def test_delete_one_offer(_pipe):
+    target = _pipe.list_items()[0]["id"]
+    r = client.delete("/pipeline/" + target)
+    assert r.status_code == 200 and r.json()["stats"]["total"] == 1
+    assert target not in [it["id"] for it in _pipe.list_items()]
+
+
+def test_delete_unknown_offer_is_404(_pipe):
+    assert client.delete("/pipeline/inconnu").status_code == 404
+
+
+def test_clear_whole_pipeline(_pipe):
+    r = client.delete("/pipeline")
+    assert r.status_code == 200 and r.json()["removed"] == 2
+    assert client.get("/pipeline").json()["items"] == []
+
+
+def test_clear_by_status(_pipe):
+    kept = _pipe.list_items()[0]["id"]
+    _pipe.update(kept, status="ready")
+    r = client.delete("/pipeline?status=sourced")
+    assert r.json()["removed"] == 1
+    assert [it["id"] for it in client.get("/pipeline").json()["items"]] == [kept]
+
+
+def test_clear_rejects_unknown_status(_pipe):
+    assert client.delete("/pipeline?status=nimportequoi").status_code == 422

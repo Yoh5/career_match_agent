@@ -133,6 +133,37 @@ def update(item_id: str, **fields) -> Optional[Dict]:
     return None
 
 
+def remove(item_id: str) -> bool:
+    """Supprime définitivement une offre. True si elle existait.
+
+    Sans ça, le pipeline ne fait que grossir : les offres écartées restent
+    à l'écran, et on finit par ne plus voir celles qui comptent."""
+    data = _load()
+    items = data.get("items", [])
+    kept = [it for it in items if it.get("id") != item_id]
+    if len(kept) == len(items):
+        return False
+    data["items"] = kept
+    _save(data)
+    return True
+
+
+def clear(status: Optional[str] = None) -> int:
+    """Vide le pipeline, ou seulement les offres d'un statut. Retourne le nb supprimé.
+
+    `status=None` supprime tout — c'est le bouton « repartir de zéro » après une
+    session de sourcing qui n'a rien donné."""
+    if status is not None and status not in STATUSES:
+        raise ValueError(f"Statut invalide : {status} (attendu : {', '.join(STATUSES)})")
+    data = _load()
+    items = data.get("items", [])
+    kept = [it for it in items if status is not None and it.get("status") != status]
+    removed = len(items) - len(kept)
+    data["items"] = kept
+    _save(data)
+    return removed
+
+
 def stats() -> Dict:
     items = _load().get("items", [])
     by = {s: 0 for s in STATUSES}
