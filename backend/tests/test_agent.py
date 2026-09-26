@@ -63,7 +63,10 @@ def test_analyze_lang_selects_english_prompt(monkeypatch):
         return (json.dumps({"fit_score": 70}), None)
     monkeypatch.setattr(agent.llm, "complete", _cap)
     agent.analyze(_CV, _OFFER, _COV, "en")
-    assert "JOB OFFER" in captured["p"]              # prompt anglais
+    # Sur la consigne, pas sur un délimiteur : les étiquettes de bloc sont
+    # structurelles et identiques dans les deux langues, ce qui est le but.
+    assert "You are a senior recruiter" in captured["p"]
+    assert "Tu es recruteur senior" not in captured["p"]
 
 
 # ── cover_letter / tailored_cv ─────────────────────────────────

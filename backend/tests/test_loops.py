@@ -47,7 +47,9 @@ class _Script:
                 g = self.groundings.pop(0) if self.groundings else []
                 return '{"unsupported": %s}' % (str(g).replace("'", '"')), None
             return '{"keywords": []}', None
-        kind = ("revise" if "CV ADAPTÉ ACTUEL" in prompt or "LETTRE ACTUELLE" in prompt
+        # Le brouillon du tour précédent arrive dans son propre bloc clos ;
+        # c'est ce qui distingue une révision d'une première génération.
+        kind = ("revise" if "<<<DRAFT" in prompt
                 else "proofread" if "Relis et corrige" in prompt or "Proofread" in prompt
                 else "generate")
         self.calls.append(kind)
